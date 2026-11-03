@@ -1,0 +1,35 @@
+# SyncEngine — local Oracle Database Free with Dio aviation NAS seed
+# First boot runs oracle/init/*.sql (5–15 min). Reset: docker compose down -v
+name: syncengine
+
+services:
+  oracle:
+    build:
+      context: ./oracle
+      dockerfile: Dockerfile
+    image: syncengine/oracle-free:local
+    container_name: syncengine-oracle
+    restart: unless-stopped
+    environment:
+      ORACLE_PASSWORD: ${ORACLE_PASSWORD:?Set ORACLE_PASSWORD in infra/.env}
+      APP_USER: ${ORACLE_APP_USER:-nas_sim}
+      APP_USER_PASSWORD: ${ORACLE_APP_PASSWORD:?Set ORACLE_APP_PASSWORD in infra/.env}
+    ports:
+      - "${ORACLE_PORT:-1522}:1521"
+    volumes:
+      - oracle-data:/opt/oracle/oradata
+      # DDL 01–09 + seeds 09a–126 (alphabetical; first boot only)
+      - ./oracle/init:/container-entrypoint-initdb.d:ro
+      - ./oracle/patches:/opt/oracle/patches:ro
+      - ./oracle/verify:/opt/oracle/verify:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 120s
+    shm_size: 1gb
+
+volumes:
+  oracle-data:
+    name: syncengine-oracle-data

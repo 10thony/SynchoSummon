@@ -1,0 +1,41 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="Aviation.Maui.MainPage"
+             Title="Aviation Sync">
+
+    <Grid RowDefinitions="Auto,Auto,Auto,*" Padding="16" RowSpacing="12">
+        <Label Grid.Row="0"
+               Text="Aviation Sync (MAUI + SQLite)"
+               FontSize="22"
+               FontAttributes="Bold" />
+
+        <VerticalStackLayout Grid.Row="1" Spacing="2">
+            <Label Text="{Binding StatusText, StringFormat='Status: {0}'}" FontSize="12" />
+            <Label Text="{Binding LastSyncText, StringFormat='Last sync: {0}'}" FontSize="12" />
+            <Label Text="{Binding FacilityCountText}" FontSize="12" />
+            <Label Text="{Binding ErrorText}"
+                   TextColor="Red"
+                   FontSize="12"
+                   IsVisible="{Binding HasError}" />
+        </VerticalStackLayout>
+
+        <HorizontalStackLayout Grid.Row="2" Spacing="8">
+            <Button Text="Refresh" Clicked="OnRefreshClicked" />
+            <Button Text="Add facility" Clicked="OnAddClicked" />
+        </HorizontalStackLayout>
+
+        <CollectionView Grid.Row="3" ItemsSource="{Binding Facilities}">
+            <CollectionView.ItemTemplate>
+                <DataTemplate>
+                    <Grid Padding="8" ColumnDefinitions="80,*,Auto">
+                        <Label Text="{Binding FacilityCode}" FontAttributes="Bold" />
+                        <Label Grid.Column="1" Text="{Binding Name}" />
+                        <Label Grid.Column="2" Text="{Binding City}" />
+                    </Grid>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+    </Grid>
+
+</ContentPage>

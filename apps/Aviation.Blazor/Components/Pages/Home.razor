@@ -1,0 +1,226 @@
+﻿@page "/"
+@rendermode InteractiveServer
+@using Aviation.Blazor.Services
+@using Aviation.Shared.Entities
+@inject FacilityViewService Facilities
+@implements IDisposable
+
+<PageTitle>Aviation Sync</PageTitle>
+
+<h1>Aviation Sync (Blazor)</h1>
+<p>Live facilities mirrored via SyncEngine deltas + SignalR wake.</p>
+
+<div class="sync-bar">
+    <span class="sync-pill sync-pill-@StatusClass" title="@Facilities.StatusMessage">
+        <span class="sync-dot"></span>
+        @StatusLabel
+    </span>
+    @if (Facilities.LastUpdateUtc is { } last)
+    {
+        <span class="sync-meta">Updated @FormatAge(last) ago</span>
+    }
+    <span class="sync-meta">
+        Cached rows: <strong>@Facilities.CachedCount</strong>
+        (showing first @_items.Count)
+    </span>
+    <a href="http://localhost:5080/telemetry" target="_blank" rel="noopener">Open telemetry dashboard</a>
+</div>
+
+<div class="actions">
+    <button class="btn" @onclick="OnRefreshClickedAsync" disabled="@_refreshing">Refresh</button>
+    <button class="btn" @onclick="AddFacility">Add facility</button>
+</div>
+
+<table>
+    <thead>
+        <tr>
+            <th>Code</th>
+            <th>Name</th>
+            <th>City</th>
+            <th>Status</th>
+        </tr>
+    </thead>
+    <tbody>
+    @if (_items.Count == 0)
+    {
+        <tr>
+            <td colspan="4" class="facilities-empty">
+                @(_initialized ? "No facilities yet." : "Loading facilities…")
+            </td>
+        </tr>
+    }
+    else
+    {
+        @foreach (var facility in _items)
+        {
+            <tr @key="facility.FacilityId">
+                <td>@facility.FacilityCode</td>
+                <td>@facility.Name</td>
+                <td>@facility.City, @facility.StateCode</td>
+                <td>@facility.OperationalStatus</td>
+            </tr>
+        }
+    }
+    </tbody>
+</table>
+
+<style>
+    .sync-bar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.75rem;
+        margin: 0.5rem 0 1rem;
+        font-size: 0.9rem;
+    }
+
+    .sync-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.15rem 0.6rem;
+        border-radius: 999px;
+        font-weight: 600;
+        line-height: 1.4;
+    }
+
+    .sync-dot {
+        width: 0.6rem;
+        height: 0.6rem;
+        border-radius: 50%;
+        background: currentColor;
+    }
+
+    .sync-pill-live { background: #e6f6ea; color: #197a3a; }
+    .sync-pill-syncing { background: #fff5d6; color: #8a6400; }
+    .sync-pill-syncing .sync-dot { animation: sync-pulse 1s ease-in-out infinite; }
+    .sync-pill-error { background: #fde3e3; color: #a1241f; }
+    .sync-pill-initializing { background: #e6ecf5; color: #2a4a7f; }
+
+    @@keyframes sync-pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.3; }
+    }
+
+    .sync-meta { color: #555; }
+    .actions { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+    .facilities-empty { font-style: italic; color: #777; padding: 1rem; text-align: center; }
+</style>
+
+@code {
+    private List<Facility> _items = [];
+    private bool _initialized;
+    private bool _refreshing;
+    private bool _refreshRequested;
+
+    private string StatusLabel => Facilities.Status switch
+    {
+        FacilityViewSyncStatus.Live => "Live",
+        FacilityViewSyncStatus.Syncing => "Syncing…",
+        FacilityViewSyncStatus.Error => "Error",
+        _ => "Initializing…",
+    };
+
+    private string StatusClass => Facilities.Status switch
+    {
+        FacilityViewSyncStatus.Live => "live",
+        FacilityViewSyncStatus.Syncing => "syncing",
+        FacilityViewSyncStatus.Error => "error",
+        _ => "initializing",
+    };
+
+    protected override void OnInitialized()
+    {
+        // Subscribe but DO NOT decode here. First paint (including prerender) must stay
+        // cheap; a catch-up pull can leave tens of thousands of entries in the store, and
+        // decoding/sorting them synchronously was what pinned the circuit thread and
+        // triggered the full-page reconnect UI.
+        Facilities.Changed += OnChanged;
+        Facilities.StatusChanged += OnStatusChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Fires only after the interactive circuit is connected (not during prerender),
+            // so the shell is already visible to the user when we start decoding.
+            await RefreshAsync();
+        }
+    }
+
+    private void OnChanged() => _ = InvokeAsync(RefreshAsync);
+
+    private void OnStatusChanged() => _ = InvokeAsync(StateHasChanged);
+
+    private Task OnRefreshClickedAsync() => RefreshAsync();
+
+    private async Task RefreshAsync()
+    {
+        // Coalesce: if a refresh is already running, remember that one more is wanted
+        // and let the in-flight one re-loop. Prevents a backlog of concurrent decodes.
+        if (_refreshing)
+        {
+            _refreshRequested = true;
+            return;
+        }
+
+        _refreshing = true;
+        try
+        {
+            do
+            {
+                _refreshRequested = false;
+                // Offload the decode/sort to the thread pool so the circuit thread stays
+                // free to pump SignalR messages while a large cache is being materialized.
+                var items = await Task.Run(() => Facilities.GetFacilities(100).ToList());
+                _items = items;
+                _initialized = true;
+                StateHasChanged();
+            }
+            while (_refreshRequested);
+        }
+        catch (Exception)
+        {
+            // Rendering is best-effort; status pill will reflect any sync-level error.
+            _initialized = true;
+            StateHasChanged();
+        }
+        finally
+        {
+            _refreshing = false;
+        }
+    }
+
+    private async Task AddFacility()
+    {
+        var id = Guid.NewGuid().ToString("N")[..8];
+        await Facilities.UpsertAsync(new Facility
+        {
+            FacilityId = $"fac-{id}",
+            FacilityCode = $"X{id[..3]}".ToUpperInvariant(),
+            Name = $"Demo Facility {id}",
+            FacilityTypeCode = "AIRPORT",
+            City = "Cedar Rapids",
+            StateCode = "IA",
+            ZipCode = "52404",
+            Latitude = 41.8847m,
+            Longitude = -91.7108m,
+        });
+    }
+
+    private static string FormatAge(DateTime utc)
+    {
+        var age = DateTime.UtcNow - utc;
+        if (age.TotalSeconds < 1) return "just now";
+        if (age.TotalSeconds < 60) return $"{(int)age.TotalSeconds}s";
+        if (age.TotalMinutes < 60) return $"{(int)age.TotalMinutes}m";
+        return $"{(int)age.TotalHours}h";
+    }
+
+    public void Dispose()
+    {
+        Facilities.Changed -= OnChanged;
+        Facilities.StatusChanged -= OnStatusChanged;
+    }
+}

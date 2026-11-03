@@ -1,0 +1,14 @@
+C:\Projects\SyncEngine\benchmarks\SyncEngine.Benchmarks\bin\Release\net10.0\SyncEngine.Benchmarks-ShortRun-1\bin\Release\net10.0\SyncEngine.Client.deps.json
+C:\Projects\SyncEngine\benchmarks\SyncEngine.Benchmarks\bin\Release\net10.0\SyncEngine.Benchmarks-ShortRun-1\bin\Release\net10.0\SyncEngine.Client.dll
+C:\Projects\SyncEngine\benchmarks\SyncEngine.Benchmarks\bin\Release\net10.0\SyncEngine.Benchmarks-ShortRun-1\bin\Release\net10.0\SyncEngine.Client.pdb
+C:\Projects\SyncEngine\benchmarks\SyncEngine.Benchmarks\bin\Release\net10.0\SyncEngine.Benchmarks-ShortRun-1\bin\Release\net10.0\SyncEngine.Abstractions.pdb
+C:\Projects\SyncEngine\benchmarks\SyncEngine.Benchmarks\bin\Release\net10.0\SyncEngine.Benchmarks-ShortRun-1\obj\SyncEngine.Client\release\SyncEngine.Client.csproj.AssemblyReference.cache
+C:\Projects\SyncEngine\benchmarks\SyncEngine.Benchmarks\bin\Release\net10.0\SyncEngine.Benchmarks-ShortRun-1\obj\SyncEngine.Client\release\SyncEngine.Client.GeneratedMSBuildEditorConfig.editorconfig
+C:\Projects\SyncEngine\benchmarks\SyncEngine.Benchmarks\bin\Release\net10.0\SyncEngine.Benchmarks-ShortRun-1\obj\SyncEngine.Client\release\SyncEngine.Client.AssemblyInfoInputs.cache
+C:\Projects\SyncEngine\benchmarks\SyncEngine.Benchmarks\bin\Release\net10.0\SyncEngine.Benchmarks-ShortRun-1\obj\SyncEngine.Client\release\SyncEngine.Client.AssemblyInfo.cs
+C:\Projects\SyncEngine\benchmarks\SyncEngine.Benchmarks\bin\Release\net10.0\SyncEngine.Benchmarks-ShortRun-1\obj\SyncEngine.Client\release\SyncEngine.Client.csproj.CoreCompileInputs.cache
+C:\Projects\SyncEngine\benchmarks\SyncEngine.Benchmarks\bin\Release\net10.0\SyncEngine.Benchmarks-ShortRun-1\obj\SyncEngine.Client\release\SyncEngi.3CAFA8DD.Up2Date
+C:\Projects\SyncEngine\benchmarks\SyncEngine.Benchmarks\bin\Release\net10.0\SyncEngine.Benchmarks-ShortRun-1\obj\SyncEngine.Client\release\SyncEngine.Client.dll
+C:\Projects\SyncEngine\benchmarks\SyncEngine.Benchmarks\bin\Release\net10.0\SyncEngine.Benchmarks-ShortRun-1\obj\SyncEngine.Client\release\refint\SyncEngine.Client.dll
+C:\Projects\SyncEngine\benchmarks\SyncEngine.Benchmarks\bin\Release\net10.0\SyncEngine.Benchmarks-ShortRun-1\obj\SyncEngine.Client\release\SyncEngine.Client.pdb
+C:\Projects\SyncEngine\benchmarks\SyncEngine.Benchmarks\bin\Release\net10.0\SyncEngine.Benchmarks-ShortRun-1\obj\SyncEngine.Client\release\ref\SyncEngine.Client.dll

@@ -1,0 +1,66 @@
+{
+  "version": 2,
+  "dgSpecHash": "dPLW5U9x2w4=",
+  "success": true,
+  "projectFilePath": "C:\\Projects\\SyncEngine\\src\\core\\SyncEngine.Client.Sqlite\\SyncEngine.Client.Sqlite.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\JustinMartinez\\AppData\\Local\\Temp\\cursor-sandbox-cache\\63e4f2fa102f4b5764c8f94a56f6a12c\\nuget\\memorypack\\1.21.4\\memorypack.1.21.4.nupkg.sha512",
+    "C:\\Users\\JustinMartinez\\AppData\\Local\\Temp\\cursor-sandbox-cache\\63e4f2fa102f4b5764c8f94a56f6a12c\\nuget\\memorypack.core\\1.21.4\\memorypack.core.1.21.4.nupkg.sha512",
+    "C:\\Users\\JustinMartinez\\AppData\\Local\\Temp\\cursor-sandbox-cache\\63e4f2fa102f4b5764c8f94a56f6a12c\\nuget\\memorypack.generator\\1.21.4\\memorypack.generator.1.21.4.nupkg.sha512",
+    "C:\\Users\\JustinMartinez\\AppData\\Local\\Temp\\cursor-sandbox-cache\\63e4f2fa102f4b5764c8f94a56f6a12c\\nuget\\microsoft.aspnetcore.connections.abstractions\\10.0.0\\microsoft.aspnetcore.connections.abstractions.10.0.0.nupkg.sha512",
+    "C:\\Users\\JustinMartinez\\AppData\\Local\\Temp\\cursor-sandbox-cache\\63e4f2fa102f4b5764c8f94a56f6a12c\\nuget\\microsoft.aspnetcore.http.connections.client\\10.0.0\\microsoft.aspnetcore.http.connections.client.10.0.0.nupkg.sha512",
+    "C:\\Users\\JustinMartinez\\AppData\\Local\\Temp\\cursor-sandbox-cache\\63e4f2fa102f4b5764c8f94a56f6a12c\\nuget\\microsoft.aspnetcore.http.connections.common\\10.0.0\\microsoft.aspnetcore.http.connections.common.10.0.0.nupkg.sha512",
+    "C:\\Users\\JustinMartinez\\AppData\\Local\\Temp\\cursor-sandbox-cache\\63e4f2fa102f4b5764c8f94a56f6a12c\\nuget\\microsoft.aspnetcore.signalr.client\\10.0.0\\microsoft.aspnetcore.signalr.client.10.0.0.nupkg.sha512",
+    "C:\\Users\\JustinMartinez\\AppData\\Local\\Temp\\cursor-sandbox-cache\\63e4f2fa102f4b5764c8f94a56f6a12c\\nuget\\microsoft.aspnetcore.signalr.client.core\\10.0.0\\microsoft.aspnetcore.signalr.client.core.10.0.0.nupkg.sha512",
+    "C:\\Users\\JustinMartinez\\AppData\\Local\\Temp\\cursor-sandbox-cache\\63e4f2fa102f4b5764c8f94a56f6a12c\\nuget\\microsoft.aspnetcore.signalr.common\\10.0.0\\microsoft.aspnetcore.signalr.common.10.0.0.nupkg.sha512",
+    "C:\\Users\\JustinMartinez\\AppData\\Local\\Temp\\cursor-sandbox-cache\\63e4f2fa102f4b5764c8f94a56f6a12c\\nuget\\microsoft.aspnetcore.signalr.protocols.json\\10.0.0\\microsoft.aspnetcore.signalr.protocols.json.10.0.0.nupkg.sha512",
+    "C:\\Users\\JustinMartinez\\AppData\\Local\\Temp\\cursor-sandbox-cache\\63e4f2fa102f4b5764c8f94a56f6a12c\\nuget\\microsoft.data.sqlite\\10.0.0\\microsoft.data.sqlite.10.0.0.nupkg.sha512",
+    "C:\\Users\\JustinMartinez\\AppData\\Local\\Temp\\cursor-sandbox-cache\\63e4f2fa102f4b5764c8f94a56f6a12c\\nuget\\microsoft.data.sqlite.core\\10.0.0\\microsoft.data.sqlite.core.10.0.0.nupkg.sha512",
+    "C:\\Users\\JustinMartinez\\AppData\\Local\\Temp\\cursor-sandbox-cache\\63e4f2fa102f4b5764c8f94a56f6a12c\\nuget\\microsoft.extensions.configuration\\10.0.0\\microsoft.extensions.configuration.10.0.0.nupkg.sha512",
+    "C:\\Users\\JustinMartinez\\AppData\\Local\\Temp\\cursor-sandbox-cache\\63e4f2fa102f4b5764c8f94a56f6a12c\\nuget\\microsoft.extensions.configuration.abstractions\\10.0.0\\microsoft.extensions.configuration.abstractions.10.0.0.nupkg.sha512",
+    "C:\\Users\\JustinMartinez\\AppData\\Local\\Temp\\cursor-sandbox-cache\\63e4f2fa102f4b5764c8f94a56f6a12c\\nuget\\microsoft.extensions.configuration.binder\\10.0.0\\microsoft.extensions.configuration.binder.10.0.0.nupkg.sha512",
+    "C:\\Users\\JustinMartinez\\AppData\\Local\\Temp\\cursor-sandbox-cache\\63e4f2fa102f4b5764c8f94a56f6a12c\\nuget\\microsoft.extensions.dependencyinjection\\10.0.0\\microsoft.extensions.dependencyinjection.10.0.0.nupkg.sha512",
+    "C:\\Users\\JustinMartinez\\AppData\\Local\\Temp\\cursor-sandbox-cache\\63e4f2fa102f4b5764c8f94a56f6a12c\\nuget\\microsoft.extensions.dependencyinjection.abstractions\\10.0.0\\microsoft.extensions.dependencyinjection.abstractions.10.0.0.nupkg.sha512",
+    "C:\\Users\\JustinMartinez\\AppData\\Local\\Temp\\cursor-sandbox-cache\\63e4f2fa102f4b5764c8f94a56f6a12c\\nuget\\microsoft.extensions.diagnostics\\10.0.0\\microsoft.extensions.diagnostics.10.0.0.nupkg.sha512",
+    "C:\\Users\\JustinMartinez\\AppData\\Local\\Temp\\cursor-sandbox-cache\\63e4f2fa102f4b5764c8f94a56f6a12c\\nuget\\microsoft.extensions.diagnostics.abstractions\\10.0.0\\microsoft.extensions.diagnostics.abstractions.10.0.0.nupkg.sha512",
+    "C:\\Users\\JustinMartinez\\AppData\\Local\\Temp\\cursor-sandbox-cache\\63e4f2fa102f4b5764c8f94a56f6a12c\\nuget\\microsoft.extensions.features\\10.0.0\\microsoft.extensions.features.10.0.0.nupkg.sha512",
+    "C:\\Users\\JustinMartinez\\AppData\\Local\\Temp\\cursor-sandbox-cache\\63e4f2fa102f4b5764c8f94a56f6a12c\\nuget\\microsoft.extensions.fileproviders.abstractions\\10.0.0\\microsoft.extensions.fileproviders.abstractions.10.0.0.nupkg.sha512",
+    "C:\\Users\\JustinMartinez\\AppData\\Local\\Temp\\cursor-sandbox-cache\\63e4f2fa102f4b5764c8f94a56f6a12c\\nuget\\microsoft.extensions.hosting.abstractions\\10.0.0\\microsoft.extensions.hosting.abstractions.10.0.0.nupkg.sha512",
+    "C:\\Users\\JustinMartinez\\AppData\\Local\\Temp\\cursor-sandbox-cache\\63e4f2fa102f4b5764c8f94a56f6a12c\\nuget\\microsoft.extensions.http\\10.0.0\\microsoft.extensions.http.10.0.0.nupkg.sha512",
+    "C:\\Users\\JustinMartinez\\AppData\\Local\\Temp\\cursor-sandbox-cache\\63e4f2fa102f4b5764c8f94a56f6a12c\\nuget\\microsoft.extensions.logging\\10.0.0\\microsoft.extensions.logging.10.0.0.nupkg.sha512",
+    "C:\\Users\\JustinMartinez\\AppData\\Local\\Temp\\cursor-sandbox-cache\\63e4f2fa102f4b5764c8f94a56f6a12c\\nuget\\microsoft.extensions.logging.abstractions\\10.0.0\\microsoft.extensions.logging.abstractions.10.0.0.nupkg.sha512",
+    "C:\\Users\\JustinMartinez\\AppData\\Local\\Temp\\cursor-sandbox-cache\\63e4f2fa102f4b5764c8f94a56f6a12c\\nuget\\microsoft.extensions.options\\10.0.0\\microsoft.extensions.options.10.0.0.nupkg.sha512",
+    "C:\\Users\\JustinMartinez\\AppData\\Local\\Temp\\cursor-sandbox-cache\\63e4f2fa102f4b5764c8f94a56f6a12c\\nuget\\microsoft.extensions.options.configurationextensions\\10.0.0\\microsoft.extensions.options.configurationextensions.10.0.0.nupkg.sha512",
+    "C:\\Users\\JustinMartinez\\AppData\\Local\\Temp\\cursor-sandbox-cache\\63e4f2fa102f4b5764c8f94a56f6a12c\\nuget\\microsoft.extensions.primitives\\10.0.0\\microsoft.extensions.primitives.10.0.0.nupkg.sha512",
+    "C:\\Users\\JustinMartinez\\AppData\\Local\\Temp\\cursor-sandbox-cache\\63e4f2fa102f4b5764c8f94a56f6a12c\\nuget\\sqlitepclraw.bundle_e_sqlite3\\2.1.11\\sqlitepclraw.bundle_e_sqlite3.2.1.11.nupkg.sha512",
+    "C:\\Users\\JustinMartinez\\AppData\\Local\\Temp\\cursor-sandbox-cache\\63e4f2fa102f4b5764c8f94a56f6a12c\\nuget\\sqlitepclraw.core\\2.1.11\\sqlitepclraw.core.2.1.11.nupkg.sha512",
+    "C:\\Users\\JustinMartinez\\AppData\\Local\\Temp\\cursor-sandbox-cache\\63e4f2fa102f4b5764c8f94a56f6a12c\\nuget\\sqlitepclraw.lib.e_sqlite3\\2.1.11\\sqlitepclraw.lib.e_sqlite3.2.1.11.nupkg.sha512",
+    "C:\\Users\\JustinMartinez\\AppData\\Local\\Temp\\cursor-sandbox-cache\\63e4f2fa102f4b5764c8f94a56f6a12c\\nuget\\sqlitepclraw.provider.e_sqlite3\\2.1.11\\sqlitepclraw.provider.e_sqlite3.2.1.11.nupkg.sha512"
+  ],
+  "logs": [
+    {
+      "code": "NU1903",
+      "level": "Warning",
+      "message": "Package 'Microsoft.AspNetCore.SignalR.Common' 10.0.0 has a known high severity vulnerability, https://github.com/advisories/GHSA-334f-vvp4-7g6p",
+      "projectPath": "C:\\Projects\\SyncEngine\\src\\core\\SyncEngine.Client.Sqlite\\SyncEngine.Client.Sqlite.csproj",
+      "warningLevel": 1,
+      "filePath": "C:\\Projects\\SyncEngine\\src\\core\\SyncEngine.Client.Sqlite\\SyncEngine.Client.Sqlite.csproj",
+      "libraryId": "Microsoft.AspNetCore.SignalR.Common",
+      "targetGraphs": [
+        "net10.0"
+      ]
+    },
+    {
+      "code": "NU1903",
+      "level": "Warning",
+      "message": "Package 'SQLitePCLRaw.lib.e_sqlite3' 2.1.11 has a known high severity vulnerability, https://github.com/advisories/GHSA-2m69-gcr7-jv3q",
+      "projectPath": "C:\\Projects\\SyncEngine\\src\\core\\SyncEngine.Client.Sqlite\\SyncEngine.Client.Sqlite.csproj",
+      "warningLevel": 1,
+      "filePath": "C:\\Projects\\SyncEngine\\src\\core\\SyncEngine.Client.Sqlite\\SyncEngine.Client.Sqlite.csproj",
+      "libraryId": "SQLitePCLRaw.lib.e_sqlite3",
+      "targetGraphs": [
+        "net10.0"
+      ]
+    }
+  ]
+}

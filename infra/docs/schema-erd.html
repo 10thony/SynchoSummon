@@ -1,0 +1,2757 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SyncEngine NAS schema — relationship diagram</title>
+<style>
+  :root {
+    --bg: #0f1419;
+    --panel: #171d25;
+    --stroke: #2a3441;
+    --text: #e7ecf3;
+    --muted: #9aa8b8;
+    --accent: #5b9fd4;
+    --facility: #3d8bfd;
+    --flight: #3dd68c;
+    --equipment: #f0b429;
+    --weather: #7c9cff;
+    --auth: #f07178;
+    --simulation: #c3a6ff;
+    --eval: #5ad4c4;
+    --perf: #ff8f6b;
+    --lookup: #8b98a8;
+    --other: #6b7c8f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font: 14px/1.45 "Segoe UI", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  header {
+    padding: 20px 24px 12px;
+    border-bottom: 1px solid var(--stroke);
+    background: var(--panel);
+  }
+  header h1 { margin: 0 0 6px; font-size: 22px; font-weight: 600; }
+  header p { margin: 0; color: var(--muted); max-width: 72ch; }
+  .toolbar {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    padding: 12px 24px; border-bottom: 1px solid var(--stroke);
+  }
+  .toolbar label { color: var(--muted); font-size: 12px; margin-right: 4px; }
+  button, select {
+    background: var(--panel); color: var(--text);
+    border: 1px solid var(--stroke); border-radius: 6px;
+    padding: 6px 10px; cursor: pointer; font: inherit;
+  }
+  button.active, button:hover { border-color: var(--accent); color: #fff; }
+  .layout { display: grid; grid-template-columns: minmax(280px, 320px) 1fr; min-height: calc(100vh - 140px); }
+  .table-item { word-break: break-word; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 12px; }
+  aside {
+    border-right: 1px solid var(--stroke); background: var(--panel);
+    overflow: auto; padding: 12px;
+  }
+  aside h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 8px 0; }
+  .table-item {
+    padding: 6px 8px; border-radius: 6px; cursor: pointer;
+    border: 1px solid transparent; margin-bottom: 2px;
+  }
+  .table-item:hover, .table-item.selected { background: #1e2733; border-color: var(--stroke); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 8px; }
+  main { position: relative; overflow: hidden; }
+  svg#canvas { width: 100%; height: 100%; min-height: 70vh; display: block; background:
+    radial-gradient(circle at 1px 1px, #243041 1px, transparent 0) 0 0 / 24px 24px;
+  }
+  .node rect {
+    fill: #1a222d; stroke-width: 1.5; rx: 8; ry: 8;
+  }
+  .node text.title { fill: var(--text); font-size: 12px; font-weight: 600; }
+  .node text.meta { fill: var(--muted); font-size: 10px; }
+  .node text.pk { fill: var(--muted); font-size: 10px; }
+  .link { fill: none; stroke: #3a4a5c; stroke-width: 1.25; opacity: .85; pointer-events: none; }
+  .link.highlight-hover { stroke: #8ec7ef; stroke-width: 2.1; opacity: 1; }
+  .link.highlight-pin { stroke: var(--accent); stroke-width: 2.5; opacity: 1; }
+  .node.dim { opacity: .18; }
+  .link.dim { opacity: .08; }
+  .node.focus rect { filter: brightness(1.15); stroke-width: 2.5; }
+  .node.neighbor rect { filter: brightness(1.08); }
+  .hint {
+    margin-left: 8px; color: var(--muted); font-size: 12px;
+  }
+  .pin-badge {
+    display: inline-block; margin-left: 8px; padding: 1px 7px;
+    border: 1px solid var(--accent); color: var(--accent);
+    border-radius: 999px; font-size: 11px; vertical-align: middle;
+  }
+  .detail {
+    position: absolute; right: 16px; top: 16px; width: min(360px, 90%);
+    background: var(--panel); border: 1px solid var(--stroke); border-radius: 10px;
+    padding: 14px; display: none; max-height: calc(100% - 32px); overflow: auto;
+  }
+  .detail h3 { margin: 0 0 8px; font-size: 16px; }
+  .detail code { color: var(--accent); font-size: 12px; }
+  .fk-row { font-size: 12px; color: var(--muted); padding: 4px 0; border-top: 1px solid var(--stroke); }
+  .stats { margin-left: auto; color: var(--muted); font-size: 12px; }
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+    aside { max-height: 220px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>NAS / aviation schema relationships</h1>
+  <p>Foreign-key graph for SyncEngine Oracle Free seed (<code>nas_sim</code>). Boxes are tables; edges are FK references. Click a table for columns and relationships.</p>
+</header>
+<div class="toolbar">
+  <label for="domainFilter">Domain</label>
+  <select id="domainFilter">
+    <option value="all">All domains</option>
+  </select>
+  <button type="button" id="resetView">Reset view</button>
+  <button type="button" id="fitView">Fit</button>
+  <button type="button" id="clearPin" title="Clear pinned highlight">Clear pin</button>
+  <span class="hint">Hover = preview · Click = pin (locks hover off) · Wheel = pan · Ctrl+wheel = zoom</span>
+  <span class="stats" id="stats"></span>
+</div>
+<div class="layout">
+  <aside>
+    <h2>Tables</h2>
+    <div id="tableList"></div>
+  </aside>
+  <main>
+    <svg id="canvas" role="img" aria-label="Schema entity relationship diagram"></svg>
+    <div class="detail" id="detail"></div>
+  </main>
+</div>
+<script id="schema-data" type="application/json">
+{
+    "generated":  "2026-11-02",
+    "tableCount":  83,
+    "fkCount":  145,
+    "tables":  [
+                   {
+                       "name":  "aircraft",
+                       "file":  "04b_aircraft.sql",
+                       "pk":  "aircraft_id",
+                       "cols":  [
+                                    "aircraft_id",
+                                    "tail_number",
+                                    "aircraft_type_code",
+                                    "home_facility_id",
+                                    "operational_status",
+                                    "seating_capacity",
+                                    "max_takeoff_weight_lbs",
+                                    "metadata_json",
+                                    "created_at",
+                                    "updated_at"
+                                ],
+                       "domain":  "flight"
+                   },
+                   {
+                       "name":  "aircraft_type_lkp",
+                       "file":  "01_lookups.sql",
+                       "pk":  "aircraft_type_code",
+                       "cols":  [
+                                    "aircraft_type_code",
+                                    "display_name",
+                                    "icao_designator",
+                                    "wake_category",
+                                    "typical_cruise_kts",
+                                    "max_seating"
+                                ],
+                       "domain":  "flight"
+                   },
+                   {
+                       "name":  "alert_severity_lkp",
+                       "file":  "01_lookups.sql",
+                       "pk":  "severity_code",
+                       "cols":  [
+                                    "severity_code",
+                                    "display_name",
+                                    "sort_order"
+                                ],
+                       "domain":  "lookup"
+                   },
+                   {
+                       "name":  "carrier_mode_lkp",
+                       "file":  "05b_part_logistics.sql",
+                       "pk":  "carrier_mode_code",
+                       "cols":  [
+                                    "carrier_mode_code",
+                                    "display_name"
+                                ],
+                       "domain":  "equipment"
+                   },
+                   {
+                       "name":  "dashboard_definition",
+                       "file":  "09_dashboard_scheduling.sql",
+                       "pk":  "dashboard_id",
+                       "cols":  [
+                                    "dashboard_id",
+                                    "dashboard_code",
+                                    "title",
+                                    "description",
+                                    "sort_order",
+                                    "is_active",
+                                    "created_at",
+                                    "updated_at"
+                                ],
+                       "domain":  "simulation"
+                   },
+                   {
+                       "name":  "dashboard_key_mapping",
+                       "file":  "09_dashboard_scheduling.sql",
+                       "pk":  "key_mapping_id",
+                       "cols":  [
+                                    "key_mapping_id",
+                                    "dashboard_id",
+                                    "key_chord",
+                                    "platform_code",
+                                    "is_active"
+                                ],
+                       "domain":  "simulation"
+                   },
+                   {
+                       "name":  "dashboard_panel",
+                       "file":  "09_dashboard_scheduling.sql",
+                       "pk":  "panel_id",
+                       "cols":  [
+                                    "panel_id",
+                                    "dashboard_id",
+                                    "title",
+                                    "entity_slug",
+                                    "grid_row",
+                                    "grid_column",
+                                    "grid_row_span",
+                                    "grid_column_span",
+                                    "page_size",
+                                    "sort_order",
+                                    "filter_json"
+                                ],
+                       "domain":  "simulation"
+                   },
+                   {
+                       "name":  "entra_group_role_mapping",
+                       "file":  "08_users_auth.sql",
+                       "pk":  "entra_group_role_mapping_id",
+                       "cols":  [
+                                    "entra_group_role_mapping_id",
+                                    "entra_tenant_id",
+                                    "entra_group_object_id",
+                                    "role_id",
+                                    "is_active",
+                                    "created_at"
+                                ],
+                       "domain":  "auth"
+                   },
+                   {
+                       "name":  "equipment",
+                       "file":  "03_equipment.sql",
+                       "pk":  "equipment_id",
+                       "cols":  [
+                                    "equipment_id",
+                                    "facility_id",
+                                    "equipment_type_code",
+                                    "identifier",
+                                    "name",
+                                    "operational_status",
+                                    "installed_at",
+                                    "last_inspection_at",
+                                    "next_inspection_due_at",
+                                    "mean_time_between_failure_hrs",
+                                    "mean_time_to_repair_hrs",
+                                    "serial_number",
+                                    "manufacturer",
+                                    "model"
+                                ],
+                       "domain":  "equipment"
+                   },
+                   {
+                       "name":  "equipment_alert",
+                       "file":  "07_alerts_config.sql",
+                       "pk":  "equipment_alert_id",
+                       "cols":  [
+                                    "equipment_alert_id",
+                                    "equipment_id",
+                                    "alert_type",
+                                    "severity",
+                                    "title",
+                                    "message",
+                                    "raised_at",
+                                    "acknowledged_at",
+                                    "acknowledged_by_user_id",
+                                    "resolved_at",
+                                    "resolved_by_user_id",
+                                    "related_maintenance_activity_id",
+                                    "metadata_json"
+                                ],
+                       "domain":  "equipment"
+                   },
+                   {
+                       "name":  "equipment_dependency",
+                       "file":  "03_equipment.sql",
+                       "pk":  "equipment_dependency_id",
+                       "cols":  [
+                                    "equipment_dependency_id",
+                                    "parent_equipment_id",
+                                    "child_equipment_id",
+                                    "dependency_type",
+                                    "created_at"
+                                ],
+                       "domain":  "equipment"
+                   },
+                   {
+                       "name":  "equipment_part",
+                       "file":  "03_equipment.sql",
+                       "pk":  "equipment_part_id",
+                       "cols":  [
+                                    "equipment_part_id",
+                                    "part_number",
+                                    "name",
+                                    "description",
+                                    "equipment_type_code",
+                                    "unit_of_measure",
+                                    "stock_quantity",
+                                    "reorder_threshold",
+                                    "storage_facility_id",
+                                    "metadata_json",
+                                    "created_at",
+                                    "updated_at"
+                                ],
+                       "domain":  "equipment"
+                   },
+                   {
+                       "name":  "equipment_part_order",
+                       "file":  "03_equipment.sql",
+                       "pk":  "equipment_part_order_id",
+                       "cols":  [
+                                    "equipment_part_order_id",
+                                    "equipment_part_id",
+                                    "equipment_part_quote_id",
+                                    "receiving_facility_id",
+                                    "maintenance_activity_id",
+                                    "quantity_ordered",
+                                    "unit_cost",
+                                    "order_status",
+                                    "ordered_at",
+                                    "expected_delivery_at",
+                                    "received_at",
+                                    "notes",
+                                    "created_at",
+                                    "updated_at"
+                                ],
+                       "domain":  "equipment"
+                   },
+                   {
+                       "name":  "equipment_part_quote",
+                       "file":  "03_equipment.sql",
+                       "pk":  "equipment_part_quote_id",
+                       "cols":  [
+                                    "equipment_part_quote_id",
+                                    "equipment_part_id",
+                                    "vendor_name",
+                                    "quoted_unit_cost",
+                                    "currency_code",
+                                    "lead_time_days",
+                                    "quote_status",
+                                    "quoted_at",
+                                    "valid_until",
+                                    "notes",
+                                    "created_at"
+                                ],
+                       "domain":  "equipment"
+                   },
+                   {
+                       "name":  "equipment_part_shipment",
+                       "file":  "05b_part_logistics.sql",
+                       "pk":  "equipment_part_shipment_id",
+                       "cols":  [
+                                    "equipment_part_shipment_id",
+                                    "equipment_part_order_id",
+                                    "equipment_part_id",
+                                    "origin_facility_id",
+                                    "origin_manufacturer_id",
+                                    "destination_facility_id",
+                                    "carrier_mode_code",
+                                    "carrier_flight_operation_id",
+                                    "quantity",
+                                    "shipment_status",
+                                    "scheduled_depart_at",
+                                    "scheduled_arrival_at",
+                                    "actual_depart_at",
+                                    "actual_arrival_at"
+                                ],
+                       "domain":  "equipment"
+                   },
+                   {
+                       "name":  "equipment_type_lkp",
+                       "file":  "01_lookups.sql",
+                       "pk":  "equipment_type_code",
+                       "cols":  [
+                                    "equipment_type_code",
+                                    "display_name",
+                                    "category",
+                                    "description"
+                                ],
+                       "domain":  "equipment"
+                   },
+                   {
+                       "name":  "eval_action_trace",
+                       "file":  "09d_eval_benchmark.sql",
+                       "pk":  "trace_id",
+                       "cols":  [
+                                    "trace_id",
+                                    "run_id",
+                                    "task_run_id",
+                                    "sequence_no",
+                                    "action_type",
+                                    "action_name",
+                                    "status",
+                                    "summary",
+                                    "payload_json",
+                                    "raw_payload_json",
+                                    "created_at",
+                                    "completed_at"
+                                ],
+                       "domain":  "eval"
+                   },
+                   {
+                       "name":  "eval_artifact",
+                       "file":  "09d_eval_benchmark.sql",
+                       "pk":  "artifact_id",
+                       "cols":  [
+                                    "artifact_id",
+                                    "run_id",
+                                    "task_run_id",
+                                    "artifact_type",
+                                    "label",
+                                    "content_json",
+                                    "raw_content_json",
+                                    "created_at"
+                                ],
+                       "domain":  "eval"
+                   },
+                   {
+                       "name":  "eval_audit_event",
+                       "file":  "09d_eval_benchmark.sql",
+                       "pk":  "audit_id",
+                       "cols":  [
+                                    "audit_id",
+                                    "event_type",
+                                    "run_id",
+                                    "task_run_id",
+                                    "profile_id",
+                                    "actor_user_id",
+                                    "summary",
+                                    "detail_json",
+                                    "created_at"
+                                ],
+                       "domain":  "eval"
+                   },
+                   {
+                       "name":  "eval_benchmark",
+                       "file":  "09d_eval_benchmark.sql",
+                       "pk":  "benchmark_id",
+                       "cols":  [
+                                    "benchmark_id",
+                                    "benchmark_code",
+                                    "title",
+                                    "description",
+                                    "version",
+                                    "is_active",
+                                    "created_at",
+                                    "updated_at"
+                                ],
+                       "domain":  "eval"
+                   },
+                   {
+                       "name":  "eval_model_profile",
+                       "file":  "09d_eval_benchmark.sql",
+                       "pk":  "profile_id",
+                       "cols":  [
+                                    "profile_id",
+                                    "profile_code",
+                                    "display_name",
+                                    "provider_code",
+                                    "model_id",
+                                    "secret_ref",
+                                    "config_json",
+                                    "supports_tools",
+                                    "supports_vision",
+                                    "is_enabled",
+                                    "created_at",
+                                    "updated_at"
+                                ],
+                       "domain":  "eval"
+                   },
+                   {
+                       "name":  "eval_run",
+                       "file":  "09d_eval_benchmark.sql",
+                       "pk":  "run_id",
+                       "cols":  [
+                                    "run_id",
+                                    "benchmark_id",
+                                    "profile_id",
+                                    "run_tag",
+                                    "status",
+                                    "started_at",
+                                    "finished_at",
+                                    "clock_snapshot_json",
+                                    "manifest_json",
+                                    "machine_score",
+                                    "human_score",
+                                    "launched_by_user_id",
+                                    "recovery_note",
+                                    "created_at"
+                                ],
+                       "domain":  "eval"
+                   },
+                   {
+                       "name":  "eval_task",
+                       "file":  "09d_eval_benchmark.sql",
+                       "pk":  "task_id",
+                       "cols":  [
+                                    "task_id",
+                                    "benchmark_id",
+                                    "task_code",
+                                    "title",
+                                    "task_type",
+                                    "prompt_text",
+                                    "rubric_json",
+                                    "expected_outcome_json",
+                                    "precondition_json",
+                                    "isolation_json",
+                                    "sort_order",
+                                    "is_active",
+                                    "created_at"
+                                ],
+                       "domain":  "eval"
+                   },
+                   {
+                       "name":  "eval_task_run",
+                       "file":  "09d_eval_benchmark.sql",
+                       "pk":  "task_run_id",
+                       "cols":  [
+                                    "task_run_id",
+                                    "run_id",
+                                    "task_id",
+                                    "status",
+                                    "machine_score",
+                                    "human_score",
+                                    "grader_notes",
+                                    "model_answer",
+                                    "final_state_json",
+                                    "failure_category",
+                                    "started_at",
+                                    "finished_at",
+                                    "created_at"
+                                ],
+                       "domain":  "eval"
+                   },
+                   {
+                       "name":  "facility",
+                       "file":  "02_facility_runway.sql",
+                       "pk":  "facility_id",
+                       "cols":  [
+                                    "facility_id",
+                                    "facility_code",
+                                    "name",
+                                    "facility_type_code",
+                                    "parent_facility_id",
+                                    "address_line1",
+                                    "city",
+                                    "state_code",
+                                    "zip_code",
+                                    "latitude",
+                                    "longitude",
+                                    "elevation_ft",
+                                    "timezone_name",
+                                    "operational_status"
+                                ],
+                       "domain":  "facility"
+                   },
+                   {
+                       "name":  "facility_logistics_activity",
+                       "file":  "05b_part_logistics.sql",
+                       "pk":  "facility_logistics_activity_id",
+                       "cols":  [
+                                    "facility_logistics_activity_id",
+                                    "facility_id",
+                                    "equipment_part_shipment_id",
+                                    "activity_type_code",
+                                    "activity_status",
+                                    "title",
+                                    "description",
+                                    "progress_pct",
+                                    "scheduled_start_at",
+                                    "scheduled_end_at",
+                                    "actual_start_at",
+                                    "actual_end_at",
+                                    "estimated_duration_min",
+                                    "priority"
+                                ],
+                       "domain":  "facility"
+                   },
+                   {
+                       "name":  "facility_logistics_activity_type_lkp",
+                       "file":  "05b_part_logistics.sql",
+                       "pk":  "activity_type_code",
+                       "cols":  [
+                                    "activity_type_code",
+                                    "display_name",
+                                    "default_duration_min",
+                                    "sort_order",
+                                    "description"
+                                ],
+                       "domain":  "facility"
+                   },
+                   {
+                       "name":  "facility_logistics_log",
+                       "file":  "05b_part_logistics.sql",
+                       "pk":  "facility_logistics_log_id",
+                       "cols":  [
+                                    "facility_logistics_log_id",
+                                    "facility_logistics_activity_id",
+                                    "log_entry_type",
+                                    "message",
+                                    "logged_at",
+                                    "logged_by_user_id",
+                                    "facility_id",
+                                    "equipment_id",
+                                    "runway_id",
+                                    "location_label",
+                                    "metadata_json"
+                                ],
+                       "domain":  "facility"
+                   },
+                   {
+                       "name":  "facility_maintenance_activity",
+                       "file":  "04_maintenance.sql",
+                       "pk":  "facility_maintenance_activity_id",
+                       "cols":  [
+                                    "facility_maintenance_activity_id",
+                                    "facility_id",
+                                    "maintenance_activity_id",
+                                    "role_type",
+                                    "created_at"
+                                ],
+                       "domain":  "facility"
+                   },
+                   {
+                       "name":  "facility_personnel_role_lkp",
+                       "file":  "02c_facility_assets.sql",
+                       "pk":  "role_code",
+                       "cols":  [
+                                    "role_code",
+                                    "display_name",
+                                    "description",
+                                    "is_manager_role",
+                                    "sort_order",
+                                    "is_active"
+                                ],
+                       "domain":  "facility"
+                   },
+                   {
+                       "name":  "facility_staff_assignment",
+                       "file":  "08c_facility_staff_assignment.sql",
+                       "pk":  "assignment_id",
+                       "cols":  [
+                                    "assignment_id",
+                                    "facility_id",
+                                    "user_id",
+                                    "role_code",
+                                    "is_lead",
+                                    "shift_metadata_json",
+                                    "assigned_at",
+                                    "assigned_by_user_id"
+                                ],
+                       "domain":  "facility"
+                   },
+                   {
+                       "name":  "facility_type_asset_profile",
+                       "file":  "02c_facility_assets.sql",
+                       "pk":  "facility_type_code",
+                       "cols":  [
+                                    "facility_type_code",
+                                    "profile_version",
+                                    "asset_profile_json",
+                                    "personnel_defaults_json",
+                                    "created_at",
+                                    "updated_at"
+                                ],
+                       "domain":  "facility"
+                   },
+                   {
+                       "name":  "facility_type_equipment_requirement",
+                       "file":  "02c_facility_assets.sql",
+                       "pk":  "requirement_id",
+                       "cols":  [
+                                    "requirement_id",
+                                    "facility_type_code",
+                                    "equipment_type_code",
+                                    "requirement_code",
+                                    "min_quantity",
+                                    "slot_code",
+                                    "description",
+                                    "sort_order"
+                                ],
+                       "domain":  "facility"
+                   },
+                   {
+                       "name":  "facility_type_lkp",
+                       "file":  "01_lookups.sql",
+                       "pk":  "facility_type_code",
+                       "cols":  [
+                                    "facility_type_code",
+                                    "display_name",
+                                    "description",
+                                    "is_active"
+                                ],
+                       "domain":  "facility"
+                   },
+                   {
+                       "name":  "flight_event",
+                       "file":  "05_flight.sql",
+                       "pk":  "flight_event_id",
+                       "cols":  [
+                                    "flight_event_id",
+                                    "flight_operation_id",
+                                    "event_type_code",
+                                    "occurred_at",
+                                    "sequence_number",
+                                    "payload_json",
+                                    "correlation_id",
+                                    "created_at"
+                                ],
+                       "domain":  "flight"
+                   },
+                   {
+                       "name":  "flight_event_type_lkp",
+                       "file":  "01_lookups.sql",
+                       "pk":  "event_type_code",
+                       "cols":  [
+                                    "event_type_code",
+                                    "display_name",
+                                    "category"
+                                ],
+                       "domain":  "flight"
+                   },
+                   {
+                       "name":  "flight_incident",
+                       "file":  "05_flight.sql",
+                       "pk":  "flight_incident_id",
+                       "cols":  [
+                                    "flight_incident_id",
+                                    "flight_operation_id",
+                                    "incident_type_code",
+                                    "severity",
+                                    "title",
+                                    "description",
+                                    "occurred_at",
+                                    "resolved_at",
+                                    "related_equipment_id",
+                                    "related_facility_id",
+                                    "metadata_json",
+                                    "created_at"
+                                ],
+                       "domain":  "flight"
+                   },
+                   {
+                       "name":  "flight_operation",
+                       "file":  "05_flight.sql",
+                       "pk":  "flight_operation_id",
+                       "cols":  [
+                                    "flight_operation_id",
+                                    "flight_request_id",
+                                    "flight_number",
+                                    "origin_facility_id",
+                                    "destination_facility_id",
+                                    "departure_runway_id",
+                                    "arrival_runway_id",
+                                    "current_phase",
+                                    "operation_status",
+                                    "scheduled_departure_at",
+                                    "scheduled_arrival_at",
+                                    "actual_departure_at",
+                                    "actual_arrival_at",
+                                    "aircraft_id"
+                                ],
+                       "domain":  "flight"
+                   },
+                   {
+                       "name":  "flight_path",
+                       "file":  "05_flight.sql",
+                       "pk":  "flight_path_id",
+                       "cols":  [
+                                    "flight_path_id",
+                                    "flight_operation_id",
+                                    "sequence_order",
+                                    "waypoint_name",
+                                    "latitude",
+                                    "longitude",
+                                    "altitude_ft",
+                                    "estimated_time_at",
+                                    "is_active",
+                                    "created_at"
+                                ],
+                       "domain":  "flight"
+                   },
+                   {
+                       "name":  "flight_path_request",
+                       "file":  "05_flight.sql",
+                       "pk":  "flight_path_request_id",
+                       "cols":  [
+                                    "flight_path_request_id",
+                                    "flight_operation_id",
+                                    "request_reason",
+                                    "request_status",
+                                    "requested_path_json",
+                                    "requested_by_user_id",
+                                    "reviewed_by_user_id",
+                                    "requested_at",
+                                    "resolved_at",
+                                    "resolution_notes"
+                                ],
+                       "domain":  "flight"
+                   },
+                   {
+                       "name":  "flight_phase_lkp",
+                       "file":  "01_lookups.sql",
+                       "pk":  "phase_code",
+                       "cols":  [
+                                    "phase_code",
+                                    "display_name",
+                                    "sort_order"
+                                ],
+                       "domain":  "flight"
+                   },
+                   {
+                       "name":  "flight_request",
+                       "file":  "05_flight.sql",
+                       "pk":  "flight_request_id",
+                       "cols":  [
+                                    "flight_request_id",
+                                    "request_number",
+                                    "origin_facility_id",
+                                    "destination_facility_id",
+                                    "requested_departure_at",
+                                    "requested_arrival_at",
+                                    "aircraft_id",
+                                    "passenger_count",
+                                    "request_status",
+                                    "requested_by_user_id",
+                                    "notes",
+                                    "metadata_json",
+                                    "created_at",
+                                    "updated_at"
+                                ],
+                       "domain":  "flight"
+                   },
+                   {
+                       "name":  "global_configuration",
+                       "file":  "07_alerts_config.sql",
+                       "pk":  "config_key",
+                       "cols":  [
+                                    "config_key",
+                                    "config_value",
+                                    "value_type",
+                                    "description",
+                                    "is_sensitive",
+                                    "updated_at",
+                                    "updated_by_user_id"
+                                ],
+                       "domain":  "simulation"
+                   },
+                   {
+                       "name":  "ground_operation_activity",
+                       "file":  "05a_ground_operations.sql",
+                       "pk":  "ground_operation_activity_id",
+                       "cols":  [
+                                    "ground_operation_activity_id",
+                                    "flight_operation_id",
+                                    "aircraft_id",
+                                    "facility_id",
+                                    "activity_type_code",
+                                    "activity_status",
+                                    "title",
+                                    "description",
+                                    "progress_pct",
+                                    "scheduled_start_at",
+                                    "scheduled_end_at",
+                                    "actual_start_at",
+                                    "actual_end_at",
+                                    "estimated_duration_min"
+                                ],
+                       "domain":  "flight"
+                   },
+                   {
+                       "name":  "ground_operation_activity_type_lkp",
+                       "file":  "01_lookups.sql",
+                       "pk":  "activity_type_code",
+                       "cols":  [
+                                    "activity_type_code",
+                                    "display_name",
+                                    "default_duration_min",
+                                    "required_for_departure",
+                                    "sort_order",
+                                    "description"
+                                ],
+                       "domain":  "flight"
+                   },
+                   {
+                       "name":  "ground_operation_log",
+                       "file":  "05a_ground_operations.sql",
+                       "pk":  "ground_operation_log_id",
+                       "cols":  [
+                                    "ground_operation_log_id",
+                                    "ground_operation_activity_id",
+                                    "log_entry_type",
+                                    "message",
+                                    "logged_at",
+                                    "logged_by_user_id",
+                                    "facility_id",
+                                    "equipment_id",
+                                    "runway_id",
+                                    "location_label",
+                                    "metadata_json"
+                                ],
+                       "domain":  "flight"
+                   },
+                   {
+                       "name":  "ground_operation_status_lkp",
+                       "file":  "01_lookups.sql",
+                       "pk":  "status_code",
+                       "cols":  [
+                                    "status_code",
+                                    "display_name",
+                                    "is_terminal"
+                                ],
+                       "domain":  "flight"
+                   },
+                   {
+                       "name":  "incident_type_lkp",
+                       "file":  "01_lookups.sql",
+                       "pk":  "incident_type_code",
+                       "cols":  [
+                                    "incident_type_code",
+                                    "display_name",
+                                    "default_severity",
+                                    "behavior_json"
+                                ],
+                       "domain":  "lookup"
+                   },
+                   {
+                       "name":  "log_entry_type_lkp",
+                       "file":  "01_lookups.sql",
+                       "pk":  "log_entry_type_code",
+                       "cols":  [
+                                    "log_entry_type_code",
+                                    "display_name",
+                                    "applies_to_domain",
+                                    "description"
+                                ],
+                       "domain":  "lookup"
+                   },
+                   {
+                       "name":  "maintenance_activity",
+                       "file":  "04_maintenance.sql",
+                       "pk":  "maintenance_activity_id",
+                       "cols":  [
+                                    "maintenance_activity_id",
+                                    "equipment_id",
+                                    "originating_facility_id",
+                                    "activity_type_code",
+                                    "maintenance_status",
+                                    "priority",
+                                    "title",
+                                    "description",
+                                    "scheduled_start_at",
+                                    "scheduled_end_at",
+                                    "actual_start_at",
+                                    "actual_end_at",
+                                    "assigned_user_id",
+                                    "estimated_duration_hrs"
+                                ],
+                       "domain":  "equipment"
+                   },
+                   {
+                       "name":  "maintenance_activity_type_lkp",
+                       "file":  "01_lookups.sql",
+                       "pk":  "activity_type_code",
+                       "cols":  [
+                                    "activity_type_code",
+                                    "display_name",
+                                    "description"
+                                ],
+                       "domain":  "equipment"
+                   },
+                   {
+                       "name":  "maintenance_log",
+                       "file":  "04_maintenance.sql",
+                       "pk":  "maintenance_log_id",
+                       "cols":  [
+                                    "maintenance_log_id",
+                                    "maintenance_activity_id",
+                                    "log_entry_type",
+                                    "message",
+                                    "logged_at",
+                                    "logged_by_user_id",
+                                    "facility_id",
+                                    "equipment_id",
+                                    "runway_id",
+                                    "location_label",
+                                    "metadata_json"
+                                ],
+                       "domain":  "equipment"
+                   },
+                   {
+                       "name":  "maintenance_report",
+                       "file":  "04_maintenance.sql",
+                       "pk":  "maintenance_report_id",
+                       "cols":  [
+                                    "maintenance_report_id",
+                                    "maintenance_activity_id",
+                                    "findings",
+                                    "actions_taken",
+                                    "parts_consumed_json",
+                                    "equipment_restored",
+                                    "completed_at",
+                                    "completed_by_user_id",
+                                    "created_at"
+                                ],
+                       "domain":  "equipment"
+                   },
+                   {
+                       "name":  "maintenance_status_lkp",
+                       "file":  "01_lookups.sql",
+                       "pk":  "status_code",
+                       "cols":  [
+                                    "status_code",
+                                    "display_name",
+                                    "is_terminal"
+                                ],
+                       "domain":  "equipment"
+                   },
+                   {
+                       "name":  "notam",
+                       "file":  "08b_notam.sql",
+                       "pk":  "notam_id",
+                       "cols":  [
+                                    "notam_id",
+                                    "notam_number",
+                                    "facility_id",
+                                    "equipment_id",
+                                    "runway_id",
+                                    "classification",
+                                    "feature",
+                                    "notam_text",
+                                    "effective_start_utc",
+                                    "effective_end_utc",
+                                    "is_active",
+                                    "metadata_json",
+                                    "created_at",
+                                    "updated_at"
+                                ],
+                       "domain":  "facility"
+                   },
+                   {
+                       "name":  "operational_status_lkp",
+                       "file":  "01_lookups.sql",
+                       "pk":  "status_code",
+                       "cols":  [
+                                    "status_code",
+                                    "display_name",
+                                    "applies_to_entity",
+                                    "sort_order"
+                                ],
+                       "domain":  "lookup"
+                   },
+                   {
+                       "name":  "order_status_lkp",
+                       "file":  "01_lookups.sql",
+                       "pk":  "status_code",
+                       "cols":  [
+                                    "status_code",
+                                    "display_name"
+                                ],
+                       "domain":  "equipment"
+                   },
+                   {
+                       "name":  "part_manufacturer_lkp",
+                       "file":  "03c_part_manufacturers.sql",
+                       "pk":  "manufacturer_id",
+                       "cols":  [
+                                    "manufacturer_id",
+                                    "manufacturer_code",
+                                    "display_name",
+                                    "contact_email",
+                                    "contact_phone",
+                                    "address_json",
+                                    "is_active",
+                                    "created_at",
+                                    "updated_at"
+                                ],
+                       "domain":  "equipment"
+                   },
+                   {
+                       "name":  "perf_test_metric",
+                       "file":  "09c_perf_test_results.sql",
+                       "pk":  "metric_id",
+                       "cols":  [
+                                    "metric_id",
+                                    "run_id",
+                                    "suite",
+                                    "test_name",
+                                    "metric_name",
+                                    "unit",
+                                    "sample_count",
+                                    "min_value",
+                                    "mean_value",
+                                    "p50_value",
+                                    "p95_value",
+                                    "p99_value",
+                                    "max_value",
+                                    "budget_status"
+                                ],
+                       "domain":  "perf"
+                   },
+                   {
+                       "name":  "perf_test_run",
+                       "file":  "09c_perf_test_results.sql",
+                       "pk":  "run_id",
+                       "cols":  [
+                                    "run_id",
+                                    "started_at",
+                                    "finished_at",
+                                    "profile_name",
+                                    "tag",
+                                    "git_sha",
+                                    "machine_name",
+                                    "run_host",
+                                    "renderer_backend",
+                                    "budget_verdict",
+                                    "clock_config_json",
+                                    "manifest_json",
+                                    "created_at"
+                                ],
+                       "domain":  "perf"
+                   },
+                   {
+                       "name":  "quote_status_lkp",
+                       "file":  "01_lookups.sql",
+                       "pk":  "status_code",
+                       "cols":  [
+                                    "status_code",
+                                    "display_name"
+                                ],
+                       "domain":  "equipment"
+                   },
+                   {
+                       "name":  "role_permission",
+                       "file":  "08_users_auth.sql",
+                       "pk":  "role_permission_id",
+                       "cols":  [
+                                    "role_permission_id",
+                                    "role_id",
+                                    "permission_code",
+                                    "created_at"
+                                ],
+                       "domain":  "auth"
+                   },
+                   {
+                       "name":  "runway",
+                       "file":  "02_facility_runway.sql",
+                       "pk":  "runway_id",
+                       "cols":  [
+                                    "runway_id",
+                                    "facility_id",
+                                    "designator",
+                                    "length_ft",
+                                    "width_ft",
+                                    "surface_type",
+                                    "magnetic_heading_deg",
+                                    "operational_status",
+                                    "occupancy_status",
+                                    "occupied_by_flight_operation_id",
+                                    "max_aircraft_category",
+                                    "metadata_json",
+                                    "created_at",
+                                    "updated_at"
+                                ],
+                       "domain":  "facility"
+                   },
+                   {
+                       "name":  "runway_equipment",
+                       "file":  "02_facility_runway.sql",
+                       "pk":  "runway_equipment_id",
+                       "cols":  [
+                                    "runway_equipment_id",
+                                    "runway_id",
+                                    "equipment_id",
+                                    "relationship_type",
+                                    "is_required",
+                                    "created_at"
+                                ],
+                       "domain":  "facility"
+                   },
+                   {
+                       "name":  "scenario_clock",
+                       "file":  "02b_simulation_geo.sql",
+                       "pk":  "clock_id",
+                       "cols":  [
+                                    "clock_id",
+                                    "scenario_day",
+                                    "anchor_ts",
+                                    "description",
+                                    "updated_at"
+                                ],
+                       "domain":  "simulation"
+                   },
+                   {
+                       "name":  "shipment_status_lkp",
+                       "file":  "05b_part_logistics.sql",
+                       "pk":  "status_code",
+                       "cols":  [
+                                    "status_code",
+                                    "display_name",
+                                    "is_terminal",
+                                    "sort_order"
+                                ],
+                       "domain":  "equipment"
+                   },
+                   {
+                       "name":  "simulation_clock_mode_lkp",
+                       "file":  "01_lookups.sql",
+                       "pk":  "clock_mode_code",
+                       "cols":  [
+                                    "clock_mode_code",
+                                    "display_name",
+                                    "description"
+                                ],
+                       "domain":  "simulation"
+                   },
+                   {
+                       "name":  "simulation_geo_location_lookup",
+                       "file":  "02b_simulation_geo.sql",
+                       "pk":  "simulation_geo_location_id",
+                       "cols":  [
+                                    "simulation_geo_location_id",
+                                    "render_context_id",
+                                    "facility_id",
+                                    "real_city",
+                                    "real_state_code",
+                                    "real_zip_code",
+                                    "virtual_latitude",
+                                    "virtual_longitude",
+                                    "virtual_elevation_ft",
+                                    "grid_row",
+                                    "grid_col",
+                                    "transform_json",
+                                    "is_enabled",
+                                    "notes"
+                                ],
+                       "domain":  "simulation"
+                   },
+                   {
+                       "name":  "simulation_render_context",
+                       "file":  "02b_simulation_geo.sql",
+                       "pk":  "render_context_id",
+                       "cols":  [
+                                    "render_context_id",
+                                    "context_code",
+                                    "name",
+                                    "description",
+                                    "is_active",
+                                    "grid_config_json",
+                                    "created_at",
+                                    "updated_at",
+                                    "created_by_user_id"
+                                ],
+                       "domain":  "simulation"
+                   },
+                   {
+                       "name":  "simulation_run_state",
+                       "file":  "02b_simulation_geo.sql",
+                       "pk":  "run_state_id",
+                       "cols":  [
+                                    "run_state_id",
+                                    "clock_mode_code",
+                                    "time_scale",
+                                    "run_status_code",
+                                    "current_sim_time_utc",
+                                    "last_tick_wall_time_utc",
+                                    "step_sequence",
+                                    "active_render_context_id",
+                                    "updated_at",
+                                    "updated_by_user_id"
+                                ],
+                       "domain":  "simulation"
+                   },
+                   {
+                       "name":  "simulation_run_status_lkp",
+                       "file":  "01_lookups.sql",
+                       "pk":  "run_status_code",
+                       "cols":  [
+                                    "run_status_code",
+                                    "display_name",
+                                    "allows_tick"
+                                ],
+                       "domain":  "simulation"
+                   },
+                   {
+                       "name":  "simulation_schedule",
+                       "file":  "09_dashboard_scheduling.sql",
+                       "pk":  "schedule_id",
+                       "cols":  [
+                                    "schedule_id",
+                                    "schedule_code",
+                                    "title",
+                                    "description",
+                                    "is_active",
+                                    "created_at",
+                                    "updated_at"
+                                ],
+                       "domain":  "simulation"
+                   },
+                   {
+                       "name":  "simulation_schedule_event",
+                       "file":  "09_dashboard_scheduling.sql",
+                       "pk":  "schedule_event_id",
+                       "cols":  [
+                                    "schedule_event_id",
+                                    "schedule_id",
+                                    "occurred_at_sim_utc",
+                                    "action_code",
+                                    "entity_slug",
+                                    "summary",
+                                    "payload_json",
+                                    "sort_order"
+                                ],
+                       "domain":  "simulation"
+                   },
+                   {
+                       "name":  "simulation_schedule_run",
+                       "file":  "09_dashboard_scheduling.sql",
+                       "pk":  "schedule_id",
+                       "cols":  [
+                                    "schedule_id",
+                                    "last_fired_at_sim_utc",
+                                    "updated_at"
+                                ],
+                       "domain":  "simulation"
+                   },
+                   {
+                       "name":  "simulation_snapshot",
+                       "file":  "02b_simulation_geo.sql",
+                       "pk":  "simulation_snapshot_id",
+                       "cols":  [
+                                    "simulation_snapshot_id",
+                                    "snapshot_label",
+                                    "render_context_id",
+                                    "sim_time_utc",
+                                    "clock_mode_code",
+                                    "time_scale",
+                                    "run_status_code",
+                                    "step_sequence",
+                                    "state_json",
+                                    "created_at",
+                                    "created_by_user_id"
+                                ],
+                       "domain":  "simulation"
+                   },
+                   {
+                       "name":  "us_state_lkp",
+                       "file":  "01_lookups.sql",
+                       "pk":  "state_code",
+                       "cols":  [
+                                    "state_code",
+                                    "state_name"
+                                ],
+                       "domain":  "lookup"
+                   },
+                   {
+                       "name":  "user_permissions",
+                       "file":  "08_users_auth.sql",
+                       "pk":  "user_permission_id",
+                       "cols":  [
+                                    "user_permission_id",
+                                    "user_id",
+                                    "role_id",
+                                    "permission_code",
+                                    "facility_scope_id",
+                                    "granted_at",
+                                    "granted_by_user_id",
+                                    "expires_at"
+                                ],
+                       "domain":  "auth"
+                   },
+                   {
+                       "name":  "user_role_lookup",
+                       "file":  "08_users_auth.sql",
+                       "pk":  "role_id",
+                       "cols":  [
+                                    "role_id",
+                                    "role_code",
+                                    "role_name",
+                                    "description",
+                                    "is_system_role",
+                                    "created_at"
+                                ],
+                       "domain":  "auth"
+                   },
+                   {
+                       "name":  "users",
+                       "file":  "08_users_auth.sql",
+                       "pk":  "user_id",
+                       "cols":  [
+                                    "user_id",
+                                    "username",
+                                    "display_name",
+                                    "email",
+                                    "is_active",
+                                    "auth_source",
+                                    "entra_tenant_id",
+                                    "entra_object_id",
+                                    "entra_upn",
+                                    "entra_display_name",
+                                    "created_at",
+                                    "updated_at",
+                                    "last_login_at"
+                                ],
+                       "domain":  "auth"
+                   },
+                   {
+                       "name":  "weather_event",
+                       "file":  "06_weather.sql",
+                       "pk":  "weather_event_id",
+                       "cols":  [
+                                    "weather_event_id",
+                                    "weather_type_code",
+                                    "name",
+                                    "severity",
+                                    "started_at",
+                                    "ended_at",
+                                    "max_wind_kts",
+                                    "visibility_sm",
+                                    "ceiling_ft",
+                                    "precipitation_rate",
+                                    "metadata_json",
+                                    "created_at",
+                                    "updated_at"
+                                ],
+                       "domain":  "weather"
+                   },
+                   {
+                       "name":  "weather_event_alert",
+                       "file":  "06_weather.sql",
+                       "pk":  "weather_event_alert_id",
+                       "cols":  [
+                                    "weather_event_alert_id",
+                                    "weather_event_id",
+                                    "facility_id",
+                                    "flight_operation_id",
+                                    "alert_level",
+                                    "message",
+                                    "issued_at",
+                                    "expires_at",
+                                    "acknowledged_at",
+                                    "acknowledged_by_user_id"
+                                ],
+                       "domain":  "weather"
+                   },
+                   {
+                       "name":  "weather_event_path",
+                       "file":  "06_weather.sql",
+                       "pk":  "weather_event_path_id",
+                       "cols":  [
+                                    "weather_event_path_id",
+                                    "weather_event_id",
+                                    "sequence_order",
+                                    "latitude",
+                                    "longitude",
+                                    "radius_nm",
+                                    "effective_at",
+                                    "intensity_factor",
+                                    "created_at"
+                                ],
+                       "domain":  "weather"
+                   },
+                   {
+                       "name":  "weather_event_type_lkp",
+                       "file":  "01_lookups.sql",
+                       "pk":  "weather_type_code",
+                       "cols":  [
+                                    "weather_type_code",
+                                    "display_name"
+                                ],
+                       "domain":  "weather"
+                   }
+               ],
+    "fks":  [
+                {
+                    "from":  "aircraft",
+                    "col":  "aircraft_type_code",
+                    "to":  "aircraft_type_lkp",
+                    "toCol":  "aircraft_type_code"
+                },
+                {
+                    "from":  "aircraft",
+                    "col":  "home_facility_id",
+                    "to":  "facility",
+                    "toCol":  "facility_id"
+                },
+                {
+                    "from":  "dashboard_key_mapping",
+                    "col":  "dashboard_id",
+                    "to":  "dashboard_definition",
+                    "toCol":  "dashboard_id"
+                },
+                {
+                    "from":  "dashboard_panel",
+                    "col":  "dashboard_id",
+                    "to":  "dashboard_definition",
+                    "toCol":  "dashboard_id"
+                },
+                {
+                    "from":  "entra_group_role_mapping",
+                    "col":  "role_id",
+                    "to":  "user_role_lookup",
+                    "toCol":  "role_id"
+                },
+                {
+                    "from":  "equipment",
+                    "col":  "equipment_type_code",
+                    "to":  "equipment_type_lkp",
+                    "toCol":  "equipment_type_code"
+                },
+                {
+                    "from":  "equipment",
+                    "col":  "facility_id",
+                    "to":  "facility",
+                    "toCol":  "facility_id"
+                },
+                {
+                    "from":  "equipment_alert",
+                    "col":  "acknowledged_by_user_id",
+                    "to":  "users",
+                    "toCol":  "user_id"
+                },
+                {
+                    "from":  "equipment_alert",
+                    "col":  "equipment_id",
+                    "to":  "equipment",
+                    "toCol":  "equipment_id"
+                },
+                {
+                    "from":  "equipment_alert",
+                    "col":  "related_maintenance_activity_id",
+                    "to":  "maintenance_activity",
+                    "toCol":  "maintenance_activity_id"
+                },
+                {
+                    "from":  "equipment_alert",
+                    "col":  "resolved_by_user_id",
+                    "to":  "users",
+                    "toCol":  "user_id"
+                },
+                {
+                    "from":  "equipment_alert",
+                    "col":  "severity",
+                    "to":  "alert_severity_lkp",
+                    "toCol":  "severity_code"
+                },
+                {
+                    "from":  "equipment_dependency",
+                    "col":  "child_equipment_id",
+                    "to":  "equipment",
+                    "toCol":  "equipment_id"
+                },
+                {
+                    "from":  "equipment_dependency",
+                    "col":  "parent_equipment_id",
+                    "to":  "equipment",
+                    "toCol":  "equipment_id"
+                },
+                {
+                    "from":  "equipment_part",
+                    "col":  "equipment_type_code",
+                    "to":  "equipment_type_lkp",
+                    "toCol":  "equipment_type_code"
+                },
+                {
+                    "from":  "equipment_part",
+                    "col":  "storage_facility_id",
+                    "to":  "facility",
+                    "toCol":  "facility_id"
+                },
+                {
+                    "from":  "equipment_part_order",
+                    "col":  "equipment_part_id",
+                    "to":  "equipment_part",
+                    "toCol":  "equipment_part_id"
+                },
+                {
+                    "from":  "equipment_part_order",
+                    "col":  "equipment_part_quote_id",
+                    "to":  "equipment_part_quote",
+                    "toCol":  "equipment_part_quote_id"
+                },
+                {
+                    "from":  "equipment_part_order",
+                    "col":  "maintenance_activity_id",
+                    "to":  "maintenance_activity",
+                    "toCol":  "maintenance_activity_id"
+                },
+                {
+                    "from":  "equipment_part_order",
+                    "col":  "order_status",
+                    "to":  "order_status_lkp",
+                    "toCol":  "status_code"
+                },
+                {
+                    "from":  "equipment_part_order",
+                    "col":  "receiving_facility_id",
+                    "to":  "facility",
+                    "toCol":  "facility_id"
+                },
+                {
+                    "from":  "equipment_part_quote",
+                    "col":  "equipment_part_id",
+                    "to":  "equipment_part",
+                    "toCol":  "equipment_part_id"
+                },
+                {
+                    "from":  "equipment_part_quote",
+                    "col":  "quote_status",
+                    "to":  "quote_status_lkp",
+                    "toCol":  "status_code"
+                },
+                {
+                    "from":  "equipment_part_shipment",
+                    "col":  "carrier_flight_operation_id",
+                    "to":  "flight_operation",
+                    "toCol":  "flight_operation_id"
+                },
+                {
+                    "from":  "equipment_part_shipment",
+                    "col":  "carrier_mode_code",
+                    "to":  "carrier_mode_lkp",
+                    "toCol":  "carrier_mode_code"
+                },
+                {
+                    "from":  "equipment_part_shipment",
+                    "col":  "destination_facility_id",
+                    "to":  "facility",
+                    "toCol":  "facility_id"
+                },
+                {
+                    "from":  "equipment_part_shipment",
+                    "col":  "equipment_part_id",
+                    "to":  "equipment_part",
+                    "toCol":  "equipment_part_id"
+                },
+                {
+                    "from":  "equipment_part_shipment",
+                    "col":  "equipment_part_order_id",
+                    "to":  "equipment_part_order",
+                    "toCol":  "equipment_part_order_id"
+                },
+                {
+                    "from":  "equipment_part_shipment",
+                    "col":  "origin_facility_id",
+                    "to":  "facility",
+                    "toCol":  "facility_id"
+                },
+                {
+                    "from":  "equipment_part_shipment",
+                    "col":  "origin_manufacturer_id",
+                    "to":  "part_manufacturer_lkp",
+                    "toCol":  "manufacturer_id"
+                },
+                {
+                    "from":  "equipment_part_shipment",
+                    "col":  "shipment_status",
+                    "to":  "shipment_status_lkp",
+                    "toCol":  "status_code"
+                },
+                {
+                    "from":  "eval_action_trace",
+                    "col":  "run_id",
+                    "to":  "eval_run",
+                    "toCol":  "run_id"
+                },
+                {
+                    "from":  "eval_action_trace",
+                    "col":  "task_run_id",
+                    "to":  "eval_task_run",
+                    "toCol":  "task_run_id"
+                },
+                {
+                    "from":  "eval_artifact",
+                    "col":  "run_id",
+                    "to":  "eval_run",
+                    "toCol":  "run_id"
+                },
+                {
+                    "from":  "eval_artifact",
+                    "col":  "task_run_id",
+                    "to":  "eval_task_run",
+                    "toCol":  "task_run_id"
+                },
+                {
+                    "from":  "eval_run",
+                    "col":  "benchmark_id",
+                    "to":  "eval_benchmark",
+                    "toCol":  "benchmark_id"
+                },
+                {
+                    "from":  "eval_run",
+                    "col":  "profile_id",
+                    "to":  "eval_model_profile",
+                    "toCol":  "profile_id"
+                },
+                {
+                    "from":  "eval_task",
+                    "col":  "benchmark_id",
+                    "to":  "eval_benchmark",
+                    "toCol":  "benchmark_id"
+                },
+                {
+                    "from":  "eval_task_run",
+                    "col":  "run_id",
+                    "to":  "eval_run",
+                    "toCol":  "run_id"
+                },
+                {
+                    "from":  "eval_task_run",
+                    "col":  "task_id",
+                    "to":  "eval_task",
+                    "toCol":  "task_id"
+                },
+                {
+                    "from":  "facility",
+                    "col":  "created_by",
+                    "to":  "users",
+                    "toCol":  "user_id"
+                },
+                {
+                    "from":  "facility",
+                    "col":  "facility_type_code",
+                    "to":  "facility_type_lkp",
+                    "toCol":  "facility_type_code"
+                },
+                {
+                    "from":  "facility",
+                    "col":  "parent_facility_id",
+                    "to":  "facility",
+                    "toCol":  "facility_id"
+                },
+                {
+                    "from":  "facility",
+                    "col":  "state_code",
+                    "to":  "us_state_lkp",
+                    "toCol":  "state_code"
+                },
+                {
+                    "from":  "facility",
+                    "col":  "updated_by",
+                    "to":  "users",
+                    "toCol":  "user_id"
+                },
+                {
+                    "from":  "facility_logistics_activity",
+                    "col":  "activity_status",
+                    "to":  "ground_operation_status_lkp",
+                    "toCol":  "status_code"
+                },
+                {
+                    "from":  "facility_logistics_activity",
+                    "col":  "activity_type_code",
+                    "to":  "facility_logistics_activity_type_lkp",
+                    "toCol":  "activity_type_code"
+                },
+                {
+                    "from":  "facility_logistics_activity",
+                    "col":  "equipment_part_shipment_id",
+                    "to":  "equipment_part_shipment",
+                    "toCol":  "equipment_part_shipment_id"
+                },
+                {
+                    "from":  "facility_logistics_activity",
+                    "col":  "facility_id",
+                    "to":  "facility",
+                    "toCol":  "facility_id"
+                },
+                {
+                    "from":  "facility_logistics_log",
+                    "col":  "equipment_id",
+                    "to":  "equipment",
+                    "toCol":  "equipment_id"
+                },
+                {
+                    "from":  "facility_logistics_log",
+                    "col":  "facility_id",
+                    "to":  "facility",
+                    "toCol":  "facility_id"
+                },
+                {
+                    "from":  "facility_logistics_log",
+                    "col":  "facility_logistics_activity_id",
+                    "to":  "facility_logistics_activity",
+                    "toCol":  "facility_logistics_activity_id"
+                },
+                {
+                    "from":  "facility_logistics_log",
+                    "col":  "log_entry_type",
+                    "to":  "log_entry_type_lkp",
+                    "toCol":  "log_entry_type_code"
+                },
+                {
+                    "from":  "facility_logistics_log",
+                    "col":  "runway_id",
+                    "to":  "runway",
+                    "toCol":  "runway_id"
+                },
+                {
+                    "from":  "facility_maintenance_activity",
+                    "col":  "facility_id",
+                    "to":  "facility",
+                    "toCol":  "facility_id"
+                },
+                {
+                    "from":  "facility_maintenance_activity",
+                    "col":  "maintenance_activity_id",
+                    "to":  "maintenance_activity",
+                    "toCol":  "maintenance_activity_id"
+                },
+                {
+                    "from":  "facility_staff_assignment",
+                    "col":  "assigned_by_user_id",
+                    "to":  "users",
+                    "toCol":  "user_id"
+                },
+                {
+                    "from":  "facility_staff_assignment",
+                    "col":  "facility_id",
+                    "to":  "facility",
+                    "toCol":  "facility_id"
+                },
+                {
+                    "from":  "facility_staff_assignment",
+                    "col":  "role_code",
+                    "to":  "facility_personnel_role_lkp",
+                    "toCol":  "role_code"
+                },
+                {
+                    "from":  "facility_staff_assignment",
+                    "col":  "user_id",
+                    "to":  "users",
+                    "toCol":  "user_id"
+                },
+                {
+                    "from":  "facility_type_asset_profile",
+                    "col":  "facility_type_code",
+                    "to":  "facility_type_lkp",
+                    "toCol":  "facility_type_code"
+                },
+                {
+                    "from":  "facility_type_equipment_requirement",
+                    "col":  "equipment_type_code",
+                    "to":  "equipment_type_lkp",
+                    "toCol":  "equipment_type_code"
+                },
+                {
+                    "from":  "facility_type_equipment_requirement",
+                    "col":  "facility_type_code",
+                    "to":  "facility_type_lkp",
+                    "toCol":  "facility_type_code"
+                },
+                {
+                    "from":  "flight_event",
+                    "col":  "event_type_code",
+                    "to":  "flight_event_type_lkp",
+                    "toCol":  "event_type_code"
+                },
+                {
+                    "from":  "flight_event",
+                    "col":  "flight_operation_id",
+                    "to":  "flight_operation",
+                    "toCol":  "flight_operation_id"
+                },
+                {
+                    "from":  "flight_incident",
+                    "col":  "flight_operation_id",
+                    "to":  "flight_operation",
+                    "toCol":  "flight_operation_id"
+                },
+                {
+                    "from":  "flight_incident",
+                    "col":  "incident_type_code",
+                    "to":  "incident_type_lkp",
+                    "toCol":  "incident_type_code"
+                },
+                {
+                    "from":  "flight_incident",
+                    "col":  "related_equipment_id",
+                    "to":  "equipment",
+                    "toCol":  "equipment_id"
+                },
+                {
+                    "from":  "flight_incident",
+                    "col":  "related_facility_id",
+                    "to":  "facility",
+                    "toCol":  "facility_id"
+                },
+                {
+                    "from":  "flight_incident",
+                    "col":  "severity",
+                    "to":  "alert_severity_lkp",
+                    "toCol":  "severity_code"
+                },
+                {
+                    "from":  "flight_operation",
+                    "col":  "aircraft_id",
+                    "to":  "aircraft",
+                    "toCol":  "aircraft_id"
+                },
+                {
+                    "from":  "flight_operation",
+                    "col":  "arrival_runway_id",
+                    "to":  "runway",
+                    "toCol":  "runway_id"
+                },
+                {
+                    "from":  "flight_operation",
+                    "col":  "current_phase",
+                    "to":  "flight_phase_lkp",
+                    "toCol":  "phase_code"
+                },
+                {
+                    "from":  "flight_operation",
+                    "col":  "departure_runway_id",
+                    "to":  "runway",
+                    "toCol":  "runway_id"
+                },
+                {
+                    "from":  "flight_operation",
+                    "col":  "destination_facility_id",
+                    "to":  "facility",
+                    "toCol":  "facility_id"
+                },
+                {
+                    "from":  "flight_operation",
+                    "col":  "flight_request_id",
+                    "to":  "flight_request",
+                    "toCol":  "flight_request_id"
+                },
+                {
+                    "from":  "flight_operation",
+                    "col":  "origin_facility_id",
+                    "to":  "facility",
+                    "toCol":  "facility_id"
+                },
+                {
+                    "from":  "flight_path",
+                    "col":  "flight_operation_id",
+                    "to":  "flight_operation",
+                    "toCol":  "flight_operation_id"
+                },
+                {
+                    "from":  "flight_path_request",
+                    "col":  "flight_operation_id",
+                    "to":  "flight_operation",
+                    "toCol":  "flight_operation_id"
+                },
+                {
+                    "from":  "flight_path_request",
+                    "col":  "requested_by_user_id",
+                    "to":  "users",
+                    "toCol":  "user_id"
+                },
+                {
+                    "from":  "flight_path_request",
+                    "col":  "reviewed_by_user_id",
+                    "to":  "users",
+                    "toCol":  "user_id"
+                },
+                {
+                    "from":  "flight_request",
+                    "col":  "aircraft_id",
+                    "to":  "aircraft",
+                    "toCol":  "aircraft_id"
+                },
+                {
+                    "from":  "flight_request",
+                    "col":  "destination_facility_id",
+                    "to":  "facility",
+                    "toCol":  "facility_id"
+                },
+                {
+                    "from":  "flight_request",
+                    "col":  "origin_facility_id",
+                    "to":  "facility",
+                    "toCol":  "facility_id"
+                },
+                {
+                    "from":  "flight_request",
+                    "col":  "requested_by_user_id",
+                    "to":  "users",
+                    "toCol":  "user_id"
+                },
+                {
+                    "from":  "global_configuration",
+                    "col":  "updated_by_user_id",
+                    "to":  "users",
+                    "toCol":  "user_id"
+                },
+                {
+                    "from":  "ground_operation_activity",
+                    "col":  "activity_status",
+                    "to":  "ground_operation_status_lkp",
+                    "toCol":  "status_code"
+                },
+                {
+                    "from":  "ground_operation_activity",
+                    "col":  "activity_type_code",
+                    "to":  "ground_operation_activity_type_lkp",
+                    "toCol":  "activity_type_code"
+                },
+                {
+                    "from":  "ground_operation_activity",
+                    "col":  "aircraft_id",
+                    "to":  "aircraft",
+                    "toCol":  "aircraft_id"
+                },
+                {
+                    "from":  "ground_operation_activity",
+                    "col":  "facility_id",
+                    "to":  "facility",
+                    "toCol":  "facility_id"
+                },
+                {
+                    "from":  "ground_operation_activity",
+                    "col":  "flight_operation_id",
+                    "to":  "flight_operation",
+                    "toCol":  "flight_operation_id"
+                },
+                {
+                    "from":  "ground_operation_log",
+                    "col":  "equipment_id",
+                    "to":  "equipment",
+                    "toCol":  "equipment_id"
+                },
+                {
+                    "from":  "ground_operation_log",
+                    "col":  "facility_id",
+                    "to":  "facility",
+                    "toCol":  "facility_id"
+                },
+                {
+                    "from":  "ground_operation_log",
+                    "col":  "ground_operation_activity_id",
+                    "to":  "ground_operation_activity",
+                    "toCol":  "ground_operation_activity_id"
+                },
+                {
+                    "from":  "ground_operation_log",
+                    "col":  "log_entry_type",
+                    "to":  "log_entry_type_lkp",
+                    "toCol":  "log_entry_type_code"
+                },
+                {
+                    "from":  "ground_operation_log",
+                    "col":  "runway_id",
+                    "to":  "runway",
+                    "toCol":  "runway_id"
+                },
+                {
+                    "from":  "maintenance_activity",
+                    "col":  "activity_type_code",
+                    "to":  "maintenance_activity_type_lkp",
+                    "toCol":  "activity_type_code"
+                },
+                {
+                    "from":  "maintenance_activity",
+                    "col":  "assigned_user_id",
+                    "to":  "users",
+                    "toCol":  "user_id"
+                },
+                {
+                    "from":  "maintenance_activity",
+                    "col":  "created_by",
+                    "to":  "users",
+                    "toCol":  "user_id"
+                },
+                {
+                    "from":  "maintenance_activity",
+                    "col":  "equipment_id",
+                    "to":  "equipment",
+                    "toCol":  "equipment_id"
+                },
+                {
+                    "from":  "maintenance_activity",
+                    "col":  "maintenance_status",
+                    "to":  "maintenance_status_lkp",
+                    "toCol":  "status_code"
+                },
+                {
+                    "from":  "maintenance_activity",
+                    "col":  "originating_facility_id",
+                    "to":  "facility",
+                    "toCol":  "facility_id"
+                },
+                {
+                    "from":  "maintenance_log",
+                    "col":  "equipment_id",
+                    "to":  "equipment",
+                    "toCol":  "equipment_id"
+                },
+                {
+                    "from":  "maintenance_log",
+                    "col":  "facility_id",
+                    "to":  "facility",
+                    "toCol":  "facility_id"
+                },
+                {
+                    "from":  "maintenance_log",
+                    "col":  "log_entry_type",
+                    "to":  "log_entry_type_lkp",
+                    "toCol":  "log_entry_type_code"
+                },
+                {
+                    "from":  "maintenance_log",
+                    "col":  "logged_by_user_id",
+                    "to":  "users",
+                    "toCol":  "user_id"
+                },
+                {
+                    "from":  "maintenance_log",
+                    "col":  "maintenance_activity_id",
+                    "to":  "maintenance_activity",
+                    "toCol":  "maintenance_activity_id"
+                },
+                {
+                    "from":  "maintenance_log",
+                    "col":  "runway_id",
+                    "to":  "runway",
+                    "toCol":  "runway_id"
+                },
+                {
+                    "from":  "maintenance_report",
+                    "col":  "completed_by_user_id",
+                    "to":  "users",
+                    "toCol":  "user_id"
+                },
+                {
+                    "from":  "maintenance_report",
+                    "col":  "maintenance_activity_id",
+                    "to":  "maintenance_activity",
+                    "toCol":  "maintenance_activity_id"
+                },
+                {
+                    "from":  "notam",
+                    "col":  "equipment_id",
+                    "to":  "equipment",
+                    "toCol":  "equipment_id"
+                },
+                {
+                    "from":  "notam",
+                    "col":  "facility_id",
+                    "to":  "facility",
+                    "toCol":  "facility_id"
+                },
+                {
+                    "from":  "notam",
+                    "col":  "runway_id",
+                    "to":  "runway",
+                    "toCol":  "runway_id"
+                },
+                {
+                    "from":  "perf_test_metric",
+                    "col":  "run_id",
+                    "to":  "perf_test_run",
+                    "toCol":  "run_id"
+                },
+                {
+                    "from":  "role_permission",
+                    "col":  "role_id",
+                    "to":  "user_role_lookup",
+                    "toCol":  "role_id"
+                },
+                {
+                    "from":  "runway",
+                    "col":  "facility_id",
+                    "to":  "facility",
+                    "toCol":  "facility_id"
+                },
+                {
+                    "from":  "runway",
+                    "col":  "occupied_by_flight_operation_id",
+                    "to":  "flight_operation",
+                    "toCol":  "flight_operation_id"
+                },
+                {
+                    "from":  "runway_equipment",
+                    "col":  "equipment_id",
+                    "to":  "equipment",
+                    "toCol":  "equipment_id"
+                },
+                {
+                    "from":  "runway_equipment",
+                    "col":  "runway_id",
+                    "to":  "runway",
+                    "toCol":  "runway_id"
+                },
+                {
+                    "from":  "simulation_geo_location_lookup",
+                    "col":  "facility_id",
+                    "to":  "facility",
+                    "toCol":  "facility_id"
+                },
+                {
+                    "from":  "simulation_geo_location_lookup",
+                    "col":  "real_state_code",
+                    "to":  "us_state_lkp",
+                    "toCol":  "state_code"
+                },
+                {
+                    "from":  "simulation_geo_location_lookup",
+                    "col":  "render_context_id",
+                    "to":  "simulation_render_context",
+                    "toCol":  "render_context_id"
+                },
+                {
+                    "from":  "simulation_render_context",
+                    "col":  "created_by_user_id",
+                    "to":  "users",
+                    "toCol":  "user_id"
+                },
+                {
+                    "from":  "simulation_run_state",
+                    "col":  "active_render_context_id",
+                    "to":  "simulation_render_context",
+                    "toCol":  "render_context_id"
+                },
+                {
+                    "from":  "simulation_run_state",
+                    "col":  "clock_mode_code",
+                    "to":  "simulation_clock_mode_lkp",
+                    "toCol":  "clock_mode_code"
+                },
+                {
+                    "from":  "simulation_run_state",
+                    "col":  "run_status_code",
+                    "to":  "simulation_run_status_lkp",
+                    "toCol":  "run_status_code"
+                },
+                {
+                    "from":  "simulation_run_state",
+                    "col":  "updated_by_user_id",
+                    "to":  "users",
+                    "toCol":  "user_id"
+                },
+                {
+                    "from":  "simulation_schedule_event",
+                    "col":  "schedule_id",
+                    "to":  "simulation_schedule",
+                    "toCol":  "schedule_id"
+                },
+                {
+                    "from":  "simulation_schedule_run",
+                    "col":  "schedule_id",
+                    "to":  "simulation_schedule",
+                    "toCol":  "schedule_id"
+                },
+                {
+                    "from":  "simulation_snapshot",
+                    "col":  "clock_mode_code",
+                    "to":  "simulation_clock_mode_lkp",
+                    "toCol":  "clock_mode_code"
+                },
+                {
+                    "from":  "simulation_snapshot",
+                    "col":  "created_by_user_id",
+                    "to":  "users",
+                    "toCol":  "user_id"
+                },
+                {
+                    "from":  "simulation_snapshot",
+                    "col":  "render_context_id",
+                    "to":  "simulation_render_context",
+                    "toCol":  "render_context_id"
+                },
+                {
+                    "from":  "simulation_snapshot",
+                    "col":  "run_status_code",
+                    "to":  "simulation_run_status_lkp",
+                    "toCol":  "run_status_code"
+                },
+                {
+                    "from":  "user_permissions",
+                    "col":  "facility_scope_id",
+                    "to":  "facility",
+                    "toCol":  "facility_id"
+                },
+                {
+                    "from":  "user_permissions",
+                    "col":  "granted_by_user_id",
+                    "to":  "users",
+                    "toCol":  "user_id"
+                },
+                {
+                    "from":  "user_permissions",
+                    "col":  "role_id",
+                    "to":  "user_role_lookup",
+                    "toCol":  "role_id"
+                },
+                {
+                    "from":  "user_permissions",
+                    "col":  "user_id",
+                    "to":  "users",
+                    "toCol":  "user_id"
+                },
+                {
+                    "from":  "weather_event",
+                    "col":  "severity",
+                    "to":  "alert_severity_lkp",
+                    "toCol":  "severity_code"
+                },
+                {
+                    "from":  "weather_event",
+                    "col":  "weather_type_code",
+                    "to":  "weather_event_type_lkp",
+                    "toCol":  "weather_type_code"
+                },
+                {
+                    "from":  "weather_event_alert",
+                    "col":  "acknowledged_by_user_id",
+                    "to":  "users",
+                    "toCol":  "user_id"
+                },
+                {
+                    "from":  "weather_event_alert",
+                    "col":  "alert_level",
+                    "to":  "alert_severity_lkp",
+                    "toCol":  "severity_code"
+                },
+                {
+                    "from":  "weather_event_alert",
+                    "col":  "facility_id",
+                    "to":  "facility",
+                    "toCol":  "facility_id"
+                },
+                {
+                    "from":  "weather_event_alert",
+                    "col":  "flight_operation_id",
+                    "to":  "flight_operation",
+                    "toCol":  "flight_operation_id"
+                },
+                {
+                    "from":  "weather_event_alert",
+                    "col":  "weather_event_id",
+                    "to":  "weather_event",
+                    "toCol":  "weather_event_id"
+                },
+                {
+                    "from":  "weather_event_path",
+                    "col":  "weather_event_id",
+                    "to":  "weather_event",
+                    "toCol":  "weather_event_id"
+                }
+            ]
+}
+</script>
+<script>
+const DATA = JSON.parse(document.getElementById('schema-data').textContent);
+const COLORS = {
+  facility: getComputedStyle(document.documentElement).getPropertyValue('--facility').trim(),
+  flight: getComputedStyle(document.documentElement).getPropertyValue('--flight').trim(),
+  equipment: getComputedStyle(document.documentElement).getPropertyValue('--equipment').trim(),
+  weather: getComputedStyle(document.documentElement).getPropertyValue('--weather').trim(),
+  auth: getComputedStyle(document.documentElement).getPropertyValue('--auth').trim(),
+  simulation: getComputedStyle(document.documentElement).getPropertyValue('--simulation').trim(),
+  eval: getComputedStyle(document.documentElement).getPropertyValue('--eval').trim(),
+  perf: getComputedStyle(document.documentElement).getPropertyValue('--perf').trim(),
+  lookup: getComputedStyle(document.documentElement).getPropertyValue('--lookup').trim(),
+  other: getComputedStyle(document.documentElement).getPropertyValue('--other').trim(),
+};
+
+const svg = document.getElementById('canvas');
+const NS = 'http://www.w3.org/2000/svg';
+const detail = document.getElementById('detail');
+const tableList = document.getElementById('tableList');
+const domainFilter = document.getElementById('domainFilter');
+const stats = document.getElementById('stats');
+
+const domains = [...new Set(DATA.tables.map(t => t.domain))].sort();
+domains.forEach(d => {
+  const opt = document.createElement('option');
+  opt.value = d; opt.textContent = d;
+  domainFilter.appendChild(opt);
+});
+
+stats.textContent = `${DATA.tableCount} tables · ${DATA.fkCount} foreign keys · generated ${DATA.generated}`;
+
+let selected = null; // pinned by click (toggle)
+let hovered = null;  // temporary hover preview
+let transform = { x: 40, y: 40, k: 1 };
+let nodes = [];
+let links = [];
+
+function domainColor(d) { return COLORS[d] || COLORS.other; }
+
+function relatedSet(name) {
+  const related = new Set([name]);
+  const edges = [];
+  DATA.fks.forEach(f => {
+    if (f.from === name || f.to === name) {
+      related.add(f.from);
+      related.add(f.to);
+      edges.push(f);
+    }
+  });
+  return { related, edges };
+}
+
+function activeFocus() {
+  // While pinned, hover is disabled — pin owns focus exclusively.
+  return selected || hovered;
+}
+
+const measureCtx = document.createElement('canvas').getContext('2d');
+function measureText(text, font) {
+  measureCtx.font = font;
+  return Math.ceil(measureCtx.measureText(text).width);
+}
+
+function nodeMetrics(t) {
+  const padX = 24;
+  const title = t.name;
+  const domainLine = t.domain;
+  const pkLine = t.pk ? `pk ${t.pk}` : '';
+  const titleW = measureText(title, '600 12px "Segoe UI", system-ui, sans-serif');
+  const domainW = measureText(domainLine, '400 10px "Segoe UI", system-ui, sans-serif');
+  const pkW = pkLine ? measureText(pkLine, '400 10px "Segoe UI", system-ui, sans-serif') : 0;
+  const w = Math.max(160, titleW, domainW, pkW) + padX;
+  const h = pkLine ? 64 : 48;
+  return { title, domainLine, pkLine, w, h };
+}
+
+function layout(tables) {
+  const byDomain = {};
+  tables.forEach(t => {
+    (byDomain[t.domain] ||= []).push(t);
+  });
+  const domainOrder = ['lookup','facility','flight','equipment','weather','auth','simulation','eval','perf','other']
+    .filter(d => byDomain[d]);
+  const placed = [];
+  const GAPX = 28, GAPY = 24, ROW_MAX = 1280;
+  let y = 0;
+  domainOrder.forEach(domain => {
+    const list = byDomain[domain].sort((a,b) => a.name.localeCompare(b.name));
+    let x = 0;
+    let rowH = 0;
+    list.forEach((t) => {
+      const m = nodeMetrics(t);
+      if (x > 0 && x + m.w > ROW_MAX) {
+        x = 0;
+        y += rowH + GAPY;
+        rowH = 0;
+      }
+      placed.push({
+        ...t,
+        ...m,
+        x,
+        y,
+      });
+      x += m.w + GAPX;
+      rowH = Math.max(rowH, m.h);
+    });
+    y += rowH + 52;
+  });
+  return placed;
+}
+
+function rebuildList(tables) {
+  tableList.innerHTML = '';
+  tables.slice().sort((a,b) => a.name.localeCompare(b.name)).forEach(t => {
+    const el = document.createElement('div');
+    el.className = 'table-item' + (selected === t.name ? ' selected' : '');
+    el.dataset.name = t.name;
+    el.innerHTML = `<span class="dot" style="background:${domainColor(t.domain)}"></span>${t.name}`;
+    el.onclick = () => togglePin(t.name);
+    el.onmouseenter = () => setHover(t.name);
+    el.onmouseleave = () => setHover(null);
+    tableList.appendChild(el);
+  });
+}
+
+function edgePath(a, b) {
+  const x1 = a.x + a.w / 2, y1 = a.y + a.h;
+  const x2 = b.x + b.w / 2, y2 = b.y;
+  const mid = (y1 + y2) / 2;
+  if (Math.abs(y2 - y1) < 8) {
+    return `M ${a.x + a.w} ${a.y + a.h/2} C ${a.x + a.w + 40} ${a.y + a.h/2}, ${b.x - 40} ${b.y + b.h/2}, ${b.x} ${b.y + b.h/2}`;
+  }
+  return `M ${x1} ${y1} C ${x1} ${mid}, ${x2} ${mid}, ${x2} ${y2}`;
+}
+
+function render() {
+  const filter = domainFilter.value;
+  const tables = DATA.tables.filter(t => filter === 'all' || t.domain === filter);
+  nodes = layout(tables);
+  const nameSet = new Set(nodes.map(n => n.name));
+  const byName = Object.fromEntries(nodes.map(n => [n.name, n]));
+  links = DATA.fks.filter(fk => nameSet.has(fk.from) && nameSet.has(fk.to));
+
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+  const root = document.createElementNS(NS, 'g');
+  root.setAttribute('transform', `translate(${transform.x},${transform.y}) scale(${transform.k})`);
+  svg.appendChild(root);
+
+  const linkG = document.createElementNS(NS, 'g');
+  root.appendChild(linkG);
+  links.forEach(fk => {
+    const path = document.createElementNS(NS, 'path');
+    path.setAttribute('d', edgePath(byName[fk.from], byName[fk.to]));
+    path.setAttribute('class', 'link');
+    path.dataset.from = fk.from;
+    path.dataset.to = fk.to;
+    linkG.appendChild(path);
+  });
+
+  const nodeG = document.createElementNS(NS, 'g');
+  root.appendChild(nodeG);
+  nodes.forEach(n => {
+    const g = document.createElementNS(NS, 'g');
+    g.setAttribute('class', 'node');
+    g.dataset.name = n.name;
+    g.style.cursor = 'pointer';
+    const rect = document.createElementNS(NS, 'rect');
+    rect.setAttribute('x', n.x); rect.setAttribute('y', n.y);
+    rect.setAttribute('width', n.w); rect.setAttribute('height', n.h);
+    rect.setAttribute('stroke', domainColor(n.domain));
+    const title = document.createElementNS(NS, 'text');
+    title.setAttribute('class', 'title');
+    title.setAttribute('x', n.x + 12); title.setAttribute('y', n.y + 20);
+    title.textContent = n.title || n.name;
+    const meta = document.createElementNS(NS, 'text');
+    meta.setAttribute('class', 'meta');
+    meta.setAttribute('x', n.x + 12); meta.setAttribute('y', n.y + 36);
+    meta.textContent = n.domainLine || n.domain;
+    g.appendChild(rect); g.appendChild(title); g.appendChild(meta);
+    if (n.pkLine) {
+      const pk = document.createElementNS(NS, 'text');
+      pk.setAttribute('class', 'pk');
+      pk.setAttribute('x', n.x + 12); pk.setAttribute('y', n.y + 52);
+      pk.textContent = n.pkLine;
+      g.appendChild(pk);
+    }
+    g.addEventListener('pointerenter', () => setHover(n.name));
+    g.addEventListener('pointerleave', () => setHover(null));
+    g.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      togglePin(n.name);
+    });
+    nodeG.appendChild(g);
+  });
+
+  rebuildList(tables);
+  applyHighlight();
+  updateDetail();
+}
+
+function setHover(name) {
+  // Pin locks the graph: ignore hover until pin is cleared or changed via click
+  if (selected) return;
+  if (hovered === name) return;
+  hovered = name;
+  applyHighlight();
+  updateDetail();
+}
+
+function togglePin(name) {
+  if (selected === name) {
+    selected = null;
+    hovered = null;
+  } else {
+    selected = name;
+    hovered = null; // disable hover while pinned
+  }
+  applyHighlight();
+  updateDetail();
+}
+
+function clearPin() {
+  selected = null;
+  hovered = null;
+  applyHighlight();
+  updateDetail();
+}
+
+function focusMode(focus) {
+  if (selected && focus === selected) return 'pin';
+  if (hovered) return 'hover';
+  return null;
+}
+
+let detailFocusKey = null;
+function updateDetail() {
+  const focus = activeFocus();
+  if (!focus) {
+    detail.style.display = 'none';
+    detailFocusKey = null;
+    return;
+  }
+  const mode = focusMode(focus);
+  const key = focus + ':' + mode;
+  // Avoid rewriting the panel (resets scroll) when focus hasn't changed
+  if (key === detailFocusKey && detail.style.display === 'block') return;
+  detailFocusKey = key;
+
+  const t = DATA.tables.find(x => x.name === focus);
+  if (!t) { detail.style.display = 'none'; return; }
+  const outs = DATA.fks.filter(f => f.from === focus);
+  const ins = DATA.fks.filter(f => f.to === focus);
+  const badge = mode === 'pin'
+    ? '<span class="pin-badge">pinned</span>'
+    : '<span class="pin-badge" style="border-color:var(--muted);color:var(--muted)">hover</span>';
+  detail.style.display = 'block';
+  detail.innerHTML = `
+    <h3>${t.name}${badge}</h3>
+    <div><code>${t.file}</code> · domain <strong>${t.domain}</strong></div>
+    <p style="margin:10px 0 4px;color:var(--muted);font-size:12px">Connected tables</p>
+    <div class="fk-row"><strong>${outs.length}</strong> outgoing · <strong>${ins.length}</strong> incoming</div>
+    <p style="margin:10px 0 4px;color:var(--muted);font-size:12px">Columns (sample)</p>
+    <div>${(t.cols || []).map(c => `<code style="display:inline-block;margin:2px 4px 2px 0;padding:2px 6px;border:1px solid var(--stroke);border-radius:4px">${c}</code>`).join('')}</div>
+    <p style="margin:12px 0 4px;color:var(--muted);font-size:12px">References out (${outs.length})</p>
+    ${outs.map(f => `<div class="fk-row">${f.col} → <strong>${f.to}</strong>.${f.toCol}</div>`).join('') || '<div class="fk-row">None</div>'}
+    <p style="margin:12px 0 4px;color:var(--muted);font-size:12px">Referenced by (${ins.length})</p>
+    ${ins.map(f => `<div class="fk-row"><strong>${f.from}</strong>.${f.col} → ${f.toCol}</div>`).join('') || '<div class="fk-row">None</div>'}
+  `;
+}
+
+function applyHighlight() {
+  const focus = activeFocus();
+  const mode = focusMode(focus);
+  const { related } = focus ? relatedSet(focus) : { related: new Set() };
+
+  document.querySelectorAll('.table-item').forEach(el => {
+    const name = el.dataset.name;
+    el.classList.toggle('selected', name === selected);
+    el.style.opacity = focus && !related.has(name) ? '0.35' : '1';
+  });
+
+  svg.querySelectorAll('.node').forEach(n => {
+    const name = n.dataset.name;
+    n.classList.toggle('dim', !!(focus && !related.has(name)));
+    n.classList.toggle('focus', name === focus);
+    n.classList.toggle('neighbor', !!(focus && related.has(name) && name !== focus));
+  });
+
+  svg.querySelectorAll('.link').forEach(l => {
+    const hit = !!(focus && (l.dataset.from === focus || l.dataset.to === focus));
+    l.classList.remove('highlight-hover', 'highlight-pin', 'dim');
+    if (hit && mode === 'pin') l.classList.add('highlight-pin');
+    else if (hit && mode === 'hover') l.classList.add('highlight-hover');
+    else if (focus) l.classList.add('dim');
+  });
+
+  if (focus) {
+    const outs = DATA.fks.filter(f => f.from === focus).length;
+    const ins = DATA.fks.filter(f => f.to === focus).length;
+    const tag = mode === 'pin' ? 'pinned' : 'hover';
+    stats.textContent = `${focus}: ${outs} out · ${ins} in · ${related.size - 1} neighbors (${tag})`;
+  } else {
+    stats.textContent = `${DATA.tableCount} tables · ${DATA.fkCount} foreign keys · generated ${DATA.generated}`;
+  }
+}
+
+domainFilter.addEventListener('change', () => {
+  selected = null;
+  hovered = null;
+  detail.style.display = 'none';
+  render();
+});
+document.getElementById('resetView').onclick = () => { transform = { x: 40, y: 40, k: 1 }; render(); };
+document.getElementById('fitView').onclick = () => {
+  if (!nodes.length) return;
+  const maxX = Math.max(...nodes.map(n => n.x + n.w));
+  const maxY = Math.max(...nodes.map(n => n.y + n.h));
+  const vbW = svg.clientWidth || 900, vbH = svg.clientHeight || 600;
+  const k = Math.min((vbW - 80) / maxX, (vbH - 80) / maxY, 1.2);
+  transform = { x: 40, y: 40, k };
+  render();
+};
+document.getElementById('clearPin').onclick = () => clearPin();
+
+function eventOnNode(target) {
+  if (!target || !target.closest) return null;
+  return target.closest('.node');
+}
+
+// Pan only on empty canvas — never capture pointer on nodes (that stole clicks)
+let dragging = false, didDrag = false, last = null, downPos = null;
+svg.addEventListener('pointerdown', e => {
+  if (e.target.closest && e.target.closest('.detail')) return;
+  if (eventOnNode(e.target)) return; // let node handle click/hover
+  dragging = true;
+  didDrag = false;
+  downPos = { x: e.clientX, y: e.clientY };
+  last = { x: e.clientX, y: e.clientY };
+  svg.setPointerCapture(e.pointerId);
+});
+svg.addEventListener('pointerup', () => { dragging = false; });
+svg.addEventListener('pointercancel', () => { dragging = false; });
+svg.addEventListener('pointermove', e => {
+  if (!dragging) return;
+  const dx = e.clientX - last.x;
+  const dy = e.clientY - last.y;
+  if (!didDrag && downPos) {
+    const total = Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y);
+    if (total > 5) didDrag = true;
+  }
+  if (!didDrag) return;
+  transform.x += dx;
+  transform.y += dy;
+  last = { x: e.clientX, y: e.clientY };
+  const g = svg.querySelector('g');
+  if (g) g.setAttribute('transform', `translate(${transform.x},${transform.y}) scale(${transform.k})`);
+});
+svg.addEventListener('click', (e) => {
+  if (didDrag) return;
+  if (eventOnNode(e.target)) return;
+  if (selected) clearPin();
+});
+function applyTransform() {
+  const g = svg.querySelector('g');
+  if (g) g.setAttribute('transform', `translate(${transform.x},${transform.y}) scale(${transform.k})`);
+}
+
+// Wheel pans the canvas; Ctrl/Meta+wheel zooms. Works while pinned.
+function onCanvasWheel(e) {
+  // Let the detail panel scroll its own content
+  if (e.target.closest && e.target.closest('.detail')) return;
+  e.preventDefault();
+  if (e.ctrlKey || e.metaKey) {
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    transform.k = Math.min(2.5, Math.max(0.35, transform.k * delta));
+  } else {
+    // Trackpads send deltaX/deltaY; mouse wheels mostly deltaY
+    transform.x -= e.deltaX;
+    transform.y -= e.deltaY;
+  }
+  applyTransform();
+}
+svg.addEventListener('wheel', onCanvasWheel, { passive: false });
+document.querySelector('main').addEventListener('wheel', onCanvasWheel, { passive: false });
+
+render();
+</script>
+</body>
+</html>

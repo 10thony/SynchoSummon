@@ -1,0 +1,15 @@
+C:\Projects\SyncEngine\src\core\SyncEngine.Providers.Oracle\obj\Debug\net10.0\SyncEngine.Providers.Oracle.csproj.AssemblyReference.cache
+C:\Projects\SyncEngine\src\core\SyncEngine.Providers.Oracle\obj\Debug\net10.0\SyncEngine.Providers.Oracle.GeneratedMSBuildEditorConfig.editorconfig
+C:\Projects\SyncEngine\src\core\SyncEngine.Providers.Oracle\obj\Debug\net10.0\SyncEngine.Providers.Oracle.AssemblyInfoInputs.cache
+C:\Projects\SyncEngine\src\core\SyncEngine.Providers.Oracle\obj\Debug\net10.0\SyncEngine.Providers.Oracle.AssemblyInfo.cs
+C:\Projects\SyncEngine\src\core\SyncEngine.Providers.Oracle\obj\Debug\net10.0\SyncEngine.Providers.Oracle.csproj.CoreCompileInputs.cache
+C:\Projects\SyncEngine\src\core\SyncEngine.Providers.Oracle\bin\Debug\net10.0\SyncEngine.Providers.Oracle.deps.json
+C:\Projects\SyncEngine\src\core\SyncEngine.Providers.Oracle\bin\Debug\net10.0\SyncEngine.Providers.Oracle.dll
+C:\Projects\SyncEngine\src\core\SyncEngine.Providers.Oracle\bin\Debug\net10.0\SyncEngine.Providers.Oracle.pdb
+C:\Projects\SyncEngine\src\core\SyncEngine.Providers.Oracle\bin\Debug\net10.0\SyncEngine.Abstractions.dll
+C:\Projects\SyncEngine\src\core\SyncEngine.Providers.Oracle\bin\Debug\net10.0\SyncEngine.Abstractions.pdb
+C:\Projects\SyncEngine\src\core\SyncEngine.Providers.Oracle\obj\Debug\net10.0\SyncEngi.E6B1AD64.Up2Date
+C:\Projects\SyncEngine\src\core\SyncEngine.Providers.Oracle\obj\Debug\net10.0\SyncEngine.Providers.Oracle.dll
+C:\Projects\SyncEngine\src\core\SyncEngine.Providers.Oracle\obj\Debug\net10.0\refint\SyncEngine.Providers.Oracle.dll
+C:\Projects\SyncEngine\src\core\SyncEngine.Providers.Oracle\obj\Debug\net10.0\SyncEngine.Providers.Oracle.pdb
+C:\Projects\SyncEngine\src\core\SyncEngine.Providers.Oracle\obj\Debug\net10.0\ref\SyncEngine.Providers.Oracle.dll

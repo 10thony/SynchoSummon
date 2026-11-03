@@ -1,0 +1,28 @@
+<Solution>
+  <Folder Name="/apps/">
+    <Project Path="apps/Aviation.Blazor/Aviation.Blazor.csproj" />
+    <Project Path="apps/Aviation.Maui/Aviation.Maui.csproj" />
+    <Project Path="apps/Aviation.Server/Aviation.Server.csproj" />
+    <Project Path="apps/Aviation.Shared/Aviation.Shared.csproj" />
+  </Folder>
+  <Folder Name="/benchmarks/">
+    <Project Path="benchmarks/SyncEngine.Benchmarks/SyncEngine.Benchmarks.csproj" />
+  </Folder>
+  <Folder Name="/src/" />
+  <Folder Name="/src/autogen/">
+    <Project Path="src/autogen/SyncEngine.Generator/SyncEngine.Generator.csproj" />
+  </Folder>
+  <Folder Name="/src/core/">
+    <Project Path="src/core/SyncEngine.Abstractions/SyncEngine.Abstractions.csproj" />
+    <Project Path="src/core/SyncEngine.Client.Sqlite/SyncEngine.Client.Sqlite.csproj" />
+    <Project Path="src/core/SyncEngine.Client/SyncEngine.Client.csproj" />
+    <Project Path="src/core/SyncEngine.Providers.Oracle/SyncEngine.Providers.Oracle.csproj" />
+    <Project Path="src/core/SyncEngine.Server/SyncEngine.Server.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SyncEngine.Tests/SyncEngine.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/SyncEngine.LoadGen/SyncEngine.LoadGen.csproj" />
+  </Folder>
+</Solution>

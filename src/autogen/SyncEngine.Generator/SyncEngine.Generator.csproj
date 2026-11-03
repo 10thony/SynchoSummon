@@ -1,0 +1,22 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>SyncEngine.Generator</RootNamespace>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>syncengine-gen</ToolCommandName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\core\SyncEngine.Abstractions\SyncEngine.Abstractions.csproj" />
+    <ProjectReference Include="..\..\core\SyncEngine.Providers.Oracle\SyncEngine.Providers.Oracle.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SyncEngine Telemetry</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a2332;
+      --line: #2a3a4f;
+      --text: #e7eef8;
+      --muted: #8aa0b8;
+      --accent: #3d9cf0;
+      --good: #3ecf8e;
+      --warn: #f0b429;
+      --write: #7c9cff;
+      --wake: #f0b429;
+      --pull: #3ecf8e;
+      --apply: #c084fc;
+      --push: #fb7185;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: radial-gradient(1200px 600px at 10% -10%, #1a2b45, var(--bg));
+      color: var(--text);
+      min-height: 100vh;
+    }
+    header {
+      padding: 1.25rem 1.5rem 0.5rem;
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      align-items: end;
+      flex-wrap: wrap;
+    }
+    h1 { margin: 0; font-size: 1.4rem; letter-spacing: 0.02em; }
+    h2 {
+      margin: 0 0 0.65rem;
+      font-size: 0.95rem;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .sub { color: var(--muted); font-size: 0.9rem; margin-top: 0.25rem; }
+    .status { color: var(--good); font-size: 0.85rem; }
+    .status.bad { color: #fb7185; }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 0.75rem;
+      padding: 1rem 1.5rem;
+    }
+    .stat {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 0.85rem 1rem;
+    }
+    .stat .label { color: var(--muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; }
+    .stat .value { font-size: 1.25rem; margin-top: 0.25rem; font-variant-numeric: tabular-nums; }
+    .report {
+      margin: 0 1.5rem 0.75rem;
+      display: grid;
+      grid-template-columns: minmax(220px, 280px) 1fr;
+      gap: 0.75rem;
+      min-height: 220px;
+    }
+    @media (max-width: 900px) {
+      .report { grid-template-columns: 1fr; }
+    }
+    .report-panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 0.85rem;
+      min-height: 200px;
+    }
+    .run-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      max-height: 320px;
+      overflow: auto;
+    }
+    .run-list li button {
+      width: 100%;
+      text-align: left;
+      display: flex;
+      flex-direction: column;
+      gap: 0.15rem;
+      padding: 0.55rem 0.65rem;
+      border-radius: 8px;
+      border: 1px solid transparent;
+      background: #121a26;
+    }
+    .run-list li button:hover { border-color: var(--accent); }
+    .run-list li button.active {
+      border-color: var(--accent);
+      background: rgba(61, 156, 240, 0.12);
+    }
+    .run-list .meta {
+      color: var(--muted);
+      font-size: 0.75rem;
+      font-family: ui-monospace, Consolas, monospace;
+    }
+    .pill {
+      display: inline-block;
+      padding: 0.1rem 0.45rem;
+      border-radius: 999px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .pill-Running { background: rgba(240,180,41,.2); color: var(--warn); }
+    .pill-CatchingUp { background: rgba(61,156,240,.2); color: var(--accent); }
+    .pill-Complete { background: rgba(62,207,142,.2); color: var(--good); }
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+      gap: 0.5rem;
+      margin-bottom: 0.85rem;
+    }
+    .kpi {
+      background: #121a26;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 0.55rem 0.65rem;
+    }
+    .kpi .label { color: var(--muted); font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; }
+    .kpi .value { font-size: 1rem; margin-top: 0.2rem; font-variant-numeric: tabular-nums; }
+    .empty {
+      color: var(--muted);
+      font-size: 0.9rem;
+      padding: 1.5rem 0.5rem;
+      text-align: center;
+    }
+    .bar-wrap {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      min-width: 120px;
+    }
+    .bar {
+      flex: 1;
+      height: 8px;
+      background: #0f1419;
+      border-radius: 999px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+    }
+    .bar > span {
+      display: block;
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), var(--good));
+    }
+    .report-tables { display: grid; gap: 0.85rem; }
+    .report-tables table { font-size: 0.8rem; }
+    .toolbar {
+      padding: 0 1.5rem 0.75rem;
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    button, select, input {
+      background: var(--panel);
+      color: var(--text);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 0.45rem 0.7rem;
+    }
+    button { cursor: pointer; }
+    button:hover { border-color: var(--accent); }
+    button:disabled { opacity: 0.5; cursor: wait; }
+    button.load { border-color: var(--line); }
+    button.load.smoke:hover { border-color: var(--good); }
+    button.load.hard:hover { border-color: var(--warn); }
+    button.load.crush:hover { border-color: var(--push); }
+    button.load.ping:hover { border-color: var(--accent); }
+    .divider { width: 1px; height: 1.5rem; background: var(--line); margin: 0 0.35rem; }
+    .load-status {
+      margin-left: 0.5rem;
+      color: var(--muted);
+      font-size: 0.85rem;
+      font-family: ui-monospace, Consolas, monospace;
+    }
+    .load-status.active { color: var(--warn); }
+    .load-status.ok { color: var(--good); }
+    .load-status.bad { color: #fb7185; }
+    label.check {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      color: var(--muted);
+      font-size: 0.85rem;
+      user-select: none;
+    }
+    label.check input { accent-color: var(--accent); }
+    main { padding: 0 1.5rem 2rem; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      overflow: hidden;
+      font-size: 0.86rem;
+    }
+    th, td {
+      padding: 0.55rem 0.7rem;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      background: #121a26;
+      position: sticky;
+      top: 0;
+    }
+    tr:hover td { background: rgba(61, 156, 240, 0.06); }
+    .kind {
+      display: inline-block;
+      padding: 0.1rem 0.45rem;
+      border-radius: 999px;
+      font-size: 0.72rem;
+      font-weight: 600;
+    }
+    .kind-Write { background: rgba(124,156,255,.2); color: var(--write); }
+    .kind-Wake { background: rgba(240,180,41,.2); color: var(--wake); }
+    .kind-DeltaPull { background: rgba(62,207,142,.2); color: var(--pull); }
+    .kind-ClientApply { background: rgba(192,132,252,.2); color: var(--apply); }
+    .kind-OfflinePush { background: rgba(251,113,133,.2); color: var(--push); }
+    .kind-ClientConnected, .kind-ClientDisconnected { background: rgba(138,160,184,.2); color: var(--muted); }
+    .mono { font-family: ui-monospace, Consolas, monospace; font-size: 0.78rem; }
+    .preview {
+      max-width: 420px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: var(--muted);
+    }
+    .table-wrap { max-height: 70vh; overflow: auto; border-radius: 12px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>SyncEngine Telemetry</h1>
+      <div class="sub">Live writes, wakes, delta pulls, client applies — latency, bytes, payload previews</div>
+    </div>
+    <div id="conn" class="status bad">connecting…</div>
+  </header>
+
+  <section class="stats" id="stats">
+    <div class="stat"><div class="label">Events</div><div class="value" id="s-events">0</div></div>
+    <div class="stat"><div class="label">Bytes out</div><div class="value" id="s-out">0</div></div>
+    <div class="stat"><div class="label">Bytes in</div><div class="value" id="s-in">0</div></div>
+    <div class="stat"><div class="label">Writes</div><div class="value" id="s-writes">0</div></div>
+    <div class="stat"><div class="label">Wakes</div><div class="value" id="s-wakes">0</div></div>
+    <div class="stat"><div class="label">Delta pulls</div><div class="value" id="s-pulls">0</div></div>
+    <div class="stat"><div class="label">Client applies</div><div class="value" id="s-applies">0</div></div>
+    <div class="stat"><div class="label">Avg pull ms</div><div class="value" id="s-pull-ms">—</div></div>
+    <div class="stat"><div class="label">Avg apply ms</div><div class="value" id="s-apply-ms">—</div></div>
+  </section>
+
+  <section class="report" id="report">
+    <div class="report-panel">
+      <h2>Benchmark runs</h2>
+      <ul class="run-list" id="runList">
+        <li class="empty">Run Smoke / Hard / Crush to populate a report.</li>
+      </ul>
+    </div>
+    <div class="report-panel" id="runDetail">
+      <div class="empty" id="runDetailEmpty">Select a run to inspect server write cost and client catch-up.</div>
+      <div id="runDetailBody" hidden>
+        <div style="display:flex;justify-content:space-between;gap:0.75rem;align-items:center;margin-bottom:0.65rem;flex-wrap:wrap;">
+          <div>
+            <strong id="rd-title">—</strong>
+            <span id="rd-status" class="pill" style="margin-left:0.5rem;">—</span>
+          </div>
+          <div class="mono" id="rd-id" style="color:var(--muted);font-size:0.75rem;"></div>
+        </div>
+        <div class="kpis" id="rd-kpis"></div>
+        <div class="report-tables">
+          <div>
+            <h2>Tiers</h2>
+            <div class="table-wrap" style="max-height:180px;">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Tier</th>
+                    <th>Packages</th>
+                    <th>Entities</th>
+                    <th>Bytes</th>
+                    <th>Apply</th>
+                    <th>Wall</th>
+                    <th>Share</th>
+                  </tr>
+                </thead>
+                <tbody id="rd-tiers"></tbody>
+              </table>
+            </div>
+          </div>
+          <div>
+            <h2>Client catch-up</h2>
+            <div class="table-wrap" style="max-height:180px;">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Client</th>
+                    <th>Non-empty pulls</th>
+                    <th>Pulls</th>
+                    <th>Pull bytes</th>
+                    <th>Applies</th>
+                    <th>Apply p50 / p95</th>
+                    <th>Versions</th>
+                    <th>Last activity</th>
+                  </tr>
+                </thead>
+                <tbody id="rd-clients"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="toolbar">
+    <button id="clearBtn" type="button">Clear view</button>
+    <button id="refreshBtn" type="button">Refresh</button>
+    <span class="divider"></span>
+    <button id="smokeBtn" class="load smoke" type="button" title="Fast sanity: ~4 small packages">Smoke</button>
+    <button id="hardBtn" class="load hard" type="button" title="Stress: tiers up through 256 KB pads">Hard</button>
+    <button id="crushBtn" class="load crush" type="button" title="Aggressive: pads up to 1 MB, hundreds of MB total">Crush</button>
+    <button id="pingBtn" class="load ping" type="button" title="Write one small facility and measure server latency">Ping latency</button>
+    <span id="loadStatus" class="load-status">idle</span>
+    <span class="divider"></span>
+    <label>Kind
+      <select id="kindFilter">
+        <option value="">All</option>
+        <option>Write</option>
+        <option>Wake</option>
+        <option>DeltaPull</option>
+        <option>ClientApply</option>
+        <option>OfflinePush</option>
+        <option>ClientConnected</option>
+        <option>ClientDisconnected</option>
+      </select>
+    </label>
+    <label>Client contains
+      <input id="clientFilter" type="text" placeholder="blazor / maui / …" />
+    </label>
+    <label class="check">
+      <input id="hideEmptyPulls" type="checkbox" checked />
+      Hide empty pulls
+    </label>
+    <label class="check">
+      <input id="scopeToRun" type="checkbox" checked />
+      Scope to selected run
+    </label>
+  </div>
+
+  <main>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Time (UTC)</th>
+            <th>Kind</th>
+            <th>Client</th>
+            <th>Direction</th>
+            <th>Entity</th>
+            <th>Versions</th>
+            <th>Changes</th>
+            <th>Bytes</th>
+            <th>Latency</th>
+            <th>Summary / data</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </main>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.7/signalr.min.js"></script>
+  <script>
+    const rowsEl = document.getElementById('rows');
+    const connEl = document.getElementById('conn');
+    const kindFilter = document.getElementById('kindFilter');
+    const clientFilter = document.getElementById('clientFilter');
+    const hideEmptyPulls = document.getElementById('hideEmptyPulls');
+    const scopeToRun = document.getElementById('scopeToRun');
+    const runListEl = document.getElementById('runList');
+    const runDetailEmpty = document.getElementById('runDetailEmpty');
+    const runDetailBody = document.getElementById('runDetailBody');
+
+    let events = [];
+    let runSummaries = [];
+    let selectedRunId = null;
+    let selectedReport = null;
+    let reportPollTimer = null;
+
+    function kindName(k) {
+      const map = {1:'Write',2:'Wake',3:'DeltaPull',4:'OfflinePush',5:'ClientApply',6:'ClientConnected',7:'ClientDisconnected'};
+      return map[k] || String(k);
+    }
+
+    function fmtBytes(n) {
+      if (n == null) return '—';
+      if (n < 1024) return n + ' B';
+      if (n < 1024*1024) return (n/1024).toFixed(1) + ' KB';
+      return (n/1024/1024).toFixed(2) + ' MB';
+    }
+
+    function fmtMs(n) {
+      if (n == null || Number.isNaN(n)) return '—';
+      return n.toFixed(1) + ' ms';
+    }
+
+    function fmtWall(ms) {
+      if (ms == null || Number.isNaN(ms)) return '—';
+      if (ms < 1000) return ms.toFixed(0) + ' ms';
+      return (ms / 1000).toFixed(2) + ' s';
+    }
+
+    function escapeHtml(s) {
+      return String(s)
+        .replaceAll('&','&amp;')
+        .replaceAll('<','&lt;')
+        .replaceAll('>','&gt;');
+    }
+
+    function selectedWindow() {
+      if (!selectedReport || !scopeToRun.checked) return null;
+      const start = new Date(selectedReport.startedUtc).getTime();
+      const endBase = selectedReport.endedUtc
+        ? new Date(selectedReport.endedUtc).getTime()
+        : Date.now();
+      const windowMs = (selectedReport.catchupWindowSeconds || 45) * 1000;
+      return { start, end: endBase + windowMs };
+    }
+
+    function passesFilters(e) {
+      const kind = kindName(e.kind);
+      if (kindFilter.value && kind !== kindFilter.value) return false;
+      const cf = clientFilter.value.trim().toLowerCase();
+      if (cf && !(e.clientId || '').toLowerCase().includes(cf)) return false;
+      if (hideEmptyPulls.checked && kind === 'DeltaPull' && (e.changeCount || 0) === 0) return false;
+      const win = selectedWindow();
+      if (win) {
+        const t = new Date(e.timestampUtc).getTime();
+        if (t < win.start || t > win.end) return false;
+      }
+      return true;
+    }
+
+    function render() {
+      const visible = events.filter(passesFilters);
+      rowsEl.innerHTML = visible.map(e => {
+        const kind = kindName(e.kind);
+        const entities = e.entityName || (e.entityNames || []).join(', ') || '—';
+        const versions = [
+          e.fromVersion != null ? 'from ' + e.fromVersion : null,
+          e.toVersion != null ? 'to ' + e.toVersion : null
+        ].filter(Boolean).join(' ');
+        const preview = [e.summary, e.payloadPreview].filter(Boolean).join('\n');
+        return `<tr>
+          <td class="mono">${new Date(e.timestampUtc).toISOString().replace('T',' ').replace('Z','')}</td>
+          <td><span class="kind kind-${kind}">${kind}</span></td>
+          <td class="mono">${e.clientId || '—'}</td>
+          <td>${e.direction || '—'}</td>
+          <td class="mono">${entities}</td>
+          <td class="mono">${versions || '—'}</td>
+          <td class="mono">${e.changeCount ?? '—'}</td>
+          <td class="mono">${fmtBytes(e.bytes)}</td>
+          <td class="mono">${fmtMs(e.latencyMs)}</td>
+          <td class="preview mono">${escapeHtml(preview)}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    function upsert(e) {
+      events.unshift(e);
+      if (events.length > 500) events = events.slice(0, 500);
+      render();
+    }
+
+    async function refreshStats() {
+      const res = await fetch('/sync/telemetry/stats');
+      const s = await res.json();
+      document.getElementById('s-events').textContent = s.totalEvents;
+      document.getElementById('s-out').textContent = fmtBytes(s.totalBytesOut);
+      document.getElementById('s-in').textContent = fmtBytes(s.totalBytesIn);
+      document.getElementById('s-writes').textContent = s.writeCount;
+      document.getElementById('s-wakes').textContent = s.wakeCount;
+      document.getElementById('s-pulls').textContent = s.deltaPullCount;
+      document.getElementById('s-applies').textContent = s.clientApplyCount;
+      document.getElementById('s-pull-ms').textContent = s.avgDeltaLatencyMs == null ? '—' : fmtMs(s.avgDeltaLatencyMs);
+      document.getElementById('s-apply-ms').textContent = s.avgApplyLatencyMs == null ? '—' : fmtMs(s.avgApplyLatencyMs);
+    }
+
+    async function loadHistory() {
+      const res = await fetch('/sync/telemetry/events?take=500');
+      events = await res.json();
+      render();
+      await refreshStats();
+    }
+
+    function renderRunList() {
+      if (!runSummaries.length) {
+        runListEl.innerHTML = '<li class="empty">Run Smoke / Hard / Crush to populate a report.</li>';
+        return;
+      }
+      runListEl.innerHTML = runSummaries.map(r => {
+        const active = r.runId === selectedRunId ? 'active' : '';
+        const wall = r.totalWallMs != null ? fmtWall(r.totalWallMs) : `${r.packagesDone}/${r.packagesTotal} pkg`;
+        return `<li>
+          <button type="button" class="${active}" data-run="${escapeHtml(r.runId)}">
+            <span><strong>${escapeHtml(r.profile)}</strong> <span class="pill pill-${escapeHtml(r.status)}">${escapeHtml(r.status)}</span></span>
+            <span class="meta">${(r.totalEntities || 0).toLocaleString()} ents · ${fmtBytes(r.totalApproximateBytes)} · ${wall}</span>
+          </button>
+        </li>`;
+      }).join('');
+      runListEl.querySelectorAll('button[data-run]').forEach(btn => {
+        btn.onclick = () => selectRun(btn.getAttribute('data-run'));
+      });
+    }
+
+    function renderRunDetail(report) {
+      if (!report) {
+        runDetailEmpty.hidden = false;
+        runDetailBody.hidden = true;
+        return;
+      }
+      runDetailEmpty.hidden = true;
+      runDetailBody.hidden = false;
+      document.getElementById('rd-title').textContent = report.profile;
+      const statusEl = document.getElementById('rd-status');
+      statusEl.textContent = report.status;
+      statusEl.className = 'pill pill-' + report.status;
+      document.getElementById('rd-id').textContent = report.runId;
+
+      const progress = report.status === 'Running'
+        ? `${report.packagesDone}/${report.packagesTotal}`
+        : '—';
+      const versionSpan = (report.fromVersion != null || report.toVersion != null)
+        ? `${report.fromVersion ?? '—'} → ${report.toVersion ?? '—'}`
+        : '—';
+
+      document.getElementById('rd-kpis').innerHTML = [
+        ['Entities', (report.entitiesApplied || 0).toLocaleString()],
+        ['Bytes', fmtBytes(report.bytesApplied)],
+        ['Server apply', fmtWall(report.totalApplyMs)],
+        ['Wall', fmtWall(report.totalWallMs)],
+        ['Progress', progress],
+        ['Versions', versionSpan],
+      ].map(([label, value]) =>
+        `<div class="kpi"><div class="label">${label}</div><div class="value">${value}</div></div>`
+      ).join('');
+
+      const tiers = report.tiers || [];
+      const maxBytes = Math.max(1, ...tiers.map(t => t.approximateBytes || 0));
+      document.getElementById('rd-tiers').innerHTML = tiers.length
+        ? tiers.map(t => {
+            const pct = Math.round(100 * (t.approximateBytes || 0) / maxBytes);
+            return `<tr>
+              <td class="mono">${escapeHtml(t.tier)}</td>
+              <td class="mono">${t.packages}</td>
+              <td class="mono">${(t.entities || 0).toLocaleString()}</td>
+              <td class="mono">${fmtBytes(t.approximateBytes)}</td>
+              <td class="mono">${fmtWall(t.applyMs)}</td>
+              <td class="mono">${fmtWall(t.wallMs)}</td>
+              <td><div class="bar-wrap"><div class="bar"><span style="width:${pct}%"></span></div><span class="mono">${pct}%</span></div></td>
+            </tr>`;
+          }).join('')
+        : '<tr><td colspan="7" class="empty">No tiers yet — run still starting.</td></tr>';
+
+      const clients = report.clients || [];
+      document.getElementById('rd-clients').innerHTML = clients.length
+        ? clients.map(c => {
+            const last = c.lastActivityUtc
+              ? new Date(c.lastActivityUtc).toISOString().replace('T',' ').replace('Z','')
+              : '—';
+            const versions = (c.fromVersion != null || c.toVersion != null)
+              ? `${c.fromVersion ?? '—'} → ${c.toVersion ?? '—'}`
+              : '—';
+            const applyPct = `${fmtMs(c.applyP50Ms)} / ${fmtMs(c.applyP95Ms)}`;
+            return `<tr>
+              <td class="mono">${escapeHtml(c.clientId)}</td>
+              <td class="mono">${c.nonEmptyPullCount}</td>
+              <td class="mono">${c.pullCount}</td>
+              <td class="mono">${fmtBytes(c.pullBytes)}</td>
+              <td class="mono">${c.applyCount}</td>
+              <td class="mono">${applyPct}</td>
+              <td class="mono">${versions}</td>
+              <td class="mono">${last}</td>
+            </tr>`;
+          }).join('')
+        : '<tr><td colspan="8" class="empty">Waiting for client DeltaPull / ClientApply…</td></tr>';
+    }
+
+    function stopReportPoll() {
+      if (reportPollTimer) {
+        clearInterval(reportPollTimer);
+        reportPollTimer = null;
+      }
+    }
+
+    function startReportPollIfNeeded() {
+      stopReportPoll();
+      if (!selectedReport) return;
+      if (selectedReport.status === 'Running' || selectedReport.status === 'CatchingUp') {
+        reportPollTimer = setInterval(() => {
+          if (selectedRunId) selectRun(selectedRunId, true);
+        }, 1000);
+      }
+    }
+
+    async function refreshRunList() {
+      try {
+        const res = await fetch('/api/load/runs');
+        if (!res.ok) return;
+        runSummaries = await res.json();
+        renderRunList();
+        if (selectedRunId && !runSummaries.some(r => r.runId === selectedRunId)) {
+          selectedRunId = runSummaries[0]?.runId || null;
+          if (selectedRunId) await selectRun(selectedRunId, true);
+          else {
+            selectedReport = null;
+            renderRunDetail(null);
+            render();
+          }
+        } else if (!selectedRunId && runSummaries[0]) {
+          await selectRun(runSummaries[0].runId, true);
+        }
+      } catch (_) { /* ignore */ }
+    }
+
+    async function selectRun(runId, silent) {
+      selectedRunId = runId;
+      renderRunList();
+      try {
+        const res = await fetch(`/api/load/runs/${encodeURIComponent(runId)}`);
+        if (!res.ok) {
+          if (!silent) selectedReport = null;
+          renderRunDetail(null);
+          return;
+        }
+        selectedReport = await res.json();
+        renderRunDetail(selectedReport);
+        render();
+        startReportPollIfNeeded();
+        if (!silent) await refreshRunListQuiet();
+      } catch (_) {
+        if (!silent) {
+          selectedReport = null;
+          renderRunDetail(null);
+        }
+      }
+    }
+
+    async function refreshRunListQuiet() {
+      try {
+        const res = await fetch('/api/load/runs');
+        if (!res.ok) return;
+        runSummaries = await res.json();
+        renderRunList();
+      } catch (_) { /* ignore */ }
+    }
+
+    document.getElementById('clearBtn').onclick = () => { events = []; render(); };
+    document.getElementById('refreshBtn').onclick = () => { loadHistory(); refreshRunList(); };
+    kindFilter.onchange = render;
+    clientFilter.oninput = render;
+    hideEmptyPulls.onchange = render;
+    scopeToRun.onchange = render;
+
+    const loadButtons = ['smokeBtn', 'hardBtn', 'crushBtn', 'pingBtn']
+      .map(id => document.getElementById(id));
+    const loadStatusEl = document.getElementById('loadStatus');
+
+    function setLoadBusy(busy) {
+      loadButtons.forEach(btn => { btn.disabled = busy; });
+    }
+
+    function setLoadStatus(text, cls) {
+      loadStatusEl.textContent = text;
+      loadStatusEl.classList.remove('active', 'ok', 'bad');
+      if (cls) loadStatusEl.classList.add(cls);
+    }
+
+    async function runProfile(profile) {
+      if (loadButtons[0].disabled) return;
+      setLoadBusy(true);
+      setLoadStatus(`Running ${profile}… 0.0s`, 'active');
+      const started = performance.now();
+      const tick = setInterval(() => {
+        const secs = ((performance.now() - started) / 1000).toFixed(1);
+        setLoadStatus(`Running ${profile}… ${secs}s`, 'active');
+        refreshRunListQuiet();
+      }, 500);
+      try {
+        const res = await fetch(`/api/load/run?profile=${encodeURIComponent(profile)}`, { method: 'POST' });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(body?.error || `${res.status} ${res.statusText}`);
+        }
+        const bytes = fmtBytes(body.totalApproximateBytes);
+        const wall = (body.totalWallMs / 1000).toFixed(2);
+        const entities = (body.totalEntities || 0).toLocaleString();
+        setLoadStatus(`Done ${profile} entities=${entities} bytes=${bytes} wall=${wall}s`, 'ok');
+        await refreshRunList();
+        if (body.runId) await selectRun(body.runId);
+      } catch (err) {
+        setLoadStatus(`Failed ${profile}: ${err.message}`, 'bad');
+      } finally {
+        clearInterval(tick);
+        setLoadBusy(false);
+        await refreshStats();
+        await loadHistory();
+        await refreshRunList();
+      }
+    }
+
+    async function runPing() {
+      if (loadButtons[0].disabled) return;
+      setLoadBusy(true);
+      setLoadStatus('Pinging…', 'active');
+      const t0 = performance.now();
+      try {
+        const res = await fetch('/api/load/ping', { method: 'POST' });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body?.error || `${res.status} ${res.statusText}`);
+        const rtt = (performance.now() - t0).toFixed(1);
+        const srv = (body.serverLatencyMs ?? 0).toFixed(1);
+        setLoadStatus(`Ping ${body.pingId}  server=${srv} ms  rtt=${rtt} ms`, 'ok');
+      } catch (err) {
+        setLoadStatus(`Ping failed: ${err.message}`, 'bad');
+      } finally {
+        setLoadBusy(false);
+        await refreshStats();
+      }
+    }
+
+    document.getElementById('smokeBtn').onclick = () => runProfile('smoke');
+    document.getElementById('hardBtn').onclick  = () => runProfile('hard');
+    document.getElementById('crushBtn').onclick = () => runProfile('crush');
+    document.getElementById('pingBtn').onclick  = () => runPing();
+
+    const connection = new signalR.HubConnectionBuilder()
+      .withUrl('/sync/telemetry/hub')
+      .withAutomaticReconnect()
+      .build();
+
+    connection.on('TelemetryEvent', (e) => {
+      upsert(e);
+      refreshStats();
+    });
+
+    async function start() {
+      try {
+        await connection.start();
+        await connection.invoke('SubscribeTelemetry');
+        connEl.textContent = 'live';
+        connEl.classList.remove('bad');
+        await loadHistory();
+        await refreshRunList();
+      } catch (err) {
+        connEl.textContent = 'offline: ' + err.message;
+        connEl.classList.add('bad');
+        setTimeout(start, 2000);
+      }
+    }
+
+    connection.onreconnected(async () => {
+      connEl.textContent = 'live';
+      connEl.classList.remove('bad');
+      await connection.invoke('SubscribeTelemetry');
+      await loadHistory();
+      await refreshRunList();
+    });
+    connection.onclose(() => {
+      connEl.textContent = 'disconnected';
+      connEl.classList.add('bad');
+    });
+
+    start();
+    setInterval(refreshStats, 5000);
+    setInterval(refreshRunListQuiet, 4000);
+  </script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>SyncEngine.Client.Sqlite</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.0" />
+    <PackageReference Include="MemoryPack" Version="1.21.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SyncEngine.Abstractions\SyncEngine.Abstractions.csproj" />
+    <ProjectReference Include="..\SyncEngine.Client\SyncEngine.Client.csproj" />
+  </ItemGroup>
+
+</Project>

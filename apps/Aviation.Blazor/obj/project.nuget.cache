@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "dgSpecHash": "yVxIHusb0OA=",
+  "success": true,
+  "projectFilePath": "C:\\Projects\\SyncEngine\\apps\\Aviation.Blazor\\Aviation.Blazor.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\JustinMartinez\\AppData\\Local\\Temp\\cursor-sandbox-cache\\63e4f2fa102f4b5764c8f94a56f6a12c\\nuget\\memorypack\\1.21.4\\memorypack.1.21.4.nupkg.sha512",
+    "C:\\Users\\JustinMartinez\\AppData\\Local\\Temp\\cursor-sandbox-cache\\63e4f2fa102f4b5764c8f94a56f6a12c\\nuget\\memorypack.core\\1.21.4\\memorypack.core.1.21.4.nupkg.sha512",
+    "C:\\Users\\JustinMartinez\\AppData\\Local\\Temp\\cursor-sandbox-cache\\63e4f2fa102f4b5764c8f94a56f6a12c\\nuget\\memorypack.generator\\1.21.4\\memorypack.generator.1.21.4.nupkg.sha512",
+    "C:\\Users\\JustinMartinez\\AppData\\Local\\Temp\\cursor-sandbox-cache\\63e4f2fa102f4b5764c8f94a56f6a12c\\nuget\\microsoft.aspnetcore.app.internal.assets\\10.0.12\\microsoft.aspnetcore.app.internal.assets.10.0.12.nupkg.sha512",
+    "C:\\Users\\JustinMartinez\\AppData\\Local\\Temp\\cursor-sandbox-cache\\63e4f2fa102f4b5764c8f94a56f6a12c\\nuget\\microsoft.aspnetcore.http.connections.client\\10.0.0\\microsoft.aspnetcore.http.connections.client.10.0.0.nupkg.sha512",
+    "C:\\Users\\JustinMartinez\\AppData\\Local\\Temp\\cursor-sandbox-cache\\63e4f2fa102f4b5764c8f94a56f6a12c\\nuget\\microsoft.aspnetcore.signalr.client\\10.0.0\\microsoft.aspnetcore.signalr.client.10.0.0.nupkg.sha512",
+    "C:\\Users\\JustinMartinez\\AppData\\Local\\Temp\\cursor-sandbox-cache\\63e4f2fa102f4b5764c8f94a56f6a12c\\nuget\\microsoft.aspnetcore.signalr.client.core\\10.0.0\\microsoft.aspnetcore.signalr.client.core.10.0.0.nupkg.sha512"
+  ],
+  "logs": []
+}

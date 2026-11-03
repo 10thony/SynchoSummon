@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='utf-8' />
+<title>SyncEngine.Benchmarks.DeltaApplyBenchmarks-20261102-185027</title>
+
+<style type="text/css">
+	table { border-collapse: collapse; display: block; width: 100%; overflow: auto; }
+	td, th { padding: 6px 13px; border: 1px solid #ddd; text-align: right; }
+	tr { background-color: #fff; border-top: 1px solid #ccc; }
+	tr:nth-child(even) { background: #f8f8f8; }
+</style>
+</head>
+<body>
+<pre><code>
+BenchmarkDotNet v0.15.4, Windows 11 (10.0.26200.9711)
+13th Gen Intel Core i7-13800H 2.50GHz, 1 CPU, 20 logical and 14 physical cores
+.NET SDK 10.0.401
+  [Host]     : .NET 10.0.12 (10.0.12, 10.0.1226.42308), X64 RyuJIT x86-64-v3
+  Job-WWFMMQ : .NET 10.0.12 (10.0.12, 10.0.1226.42308), X64 RyuJIT x86-64-v3
+</code></pre>
+<pre><code>IterationCount=3  WarmupCount=1  
+</code></pre>
+
+<table>
+<thead><tr><th>Method                                    </th><th>ChangeCount</th><th>Mean</th><th>Error</th><th>StdDev</th><th>Gen0</th><th>Allocated</th>
+</tr>
+</thead><tbody><tr><td>&#39;Apply 1k MemoryPack facility upserts to SQLite&#39;</td><td>1000</td><td>20.04 ms</td><td>11.60 ms</td><td>0.636 ms</td><td>93.7500</td><td>1.21 MB</td>
+</tr></tbody></table>
+</body>
+</html>

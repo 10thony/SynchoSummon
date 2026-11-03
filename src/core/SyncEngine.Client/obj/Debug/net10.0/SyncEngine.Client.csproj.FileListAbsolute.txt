@@ -1,0 +1,15 @@
+C:\Projects\SyncEngine\src\core\SyncEngine.Client\obj\Debug\net10.0\SyncEngine.Client.csproj.AssemblyReference.cache
+C:\Projects\SyncEngine\src\core\SyncEngine.Client\obj\Debug\net10.0\SyncEngine.Client.GeneratedMSBuildEditorConfig.editorconfig
+C:\Projects\SyncEngine\src\core\SyncEngine.Client\obj\Debug\net10.0\SyncEngine.Client.AssemblyInfoInputs.cache
+C:\Projects\SyncEngine\src\core\SyncEngine.Client\obj\Debug\net10.0\SyncEngine.Client.AssemblyInfo.cs
+C:\Projects\SyncEngine\src\core\SyncEngine.Client\obj\Debug\net10.0\SyncEngine.Client.csproj.CoreCompileInputs.cache
+C:\Projects\SyncEngine\src\core\SyncEngine.Client\bin\Debug\net10.0\SyncEngine.Client.deps.json
+C:\Projects\SyncEngine\src\core\SyncEngine.Client\bin\Debug\net10.0\SyncEngine.Client.dll
+C:\Projects\SyncEngine\src\core\SyncEngine.Client\bin\Debug\net10.0\SyncEngine.Client.pdb
+C:\Projects\SyncEngine\src\core\SyncEngine.Client\bin\Debug\net10.0\SyncEngine.Abstractions.dll
+C:\Projects\SyncEngine\src\core\SyncEngine.Client\bin\Debug\net10.0\SyncEngine.Abstractions.pdb
+C:\Projects\SyncEngine\src\core\SyncEngine.Client\obj\Debug\net10.0\SyncEngi.3CAFA8DD.Up2Date
+C:\Projects\SyncEngine\src\core\SyncEngine.Client\obj\Debug\net10.0\SyncEngine.Client.dll
+C:\Projects\SyncEngine\src\core\SyncEngine.Client\obj\Debug\net10.0\refint\SyncEngine.Client.dll
+C:\Projects\SyncEngine\src\core\SyncEngine.Client\obj\Debug\net10.0\SyncEngine.Client.pdb
+C:\Projects\SyncEngine\src\core\SyncEngine.Client\obj\Debug\net10.0\ref\SyncEngine.Client.dll
