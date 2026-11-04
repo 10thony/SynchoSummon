@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Aviation.Shared.Entities;
+using Aviation.Shared.Seed;
 using SyncEngine.Abstractions.Codec;
 using SyncEngine.Server.Ledger;
 
@@ -69,40 +70,55 @@ public sealed class InMemoryAviationStore(ChangeLedgerWriter ledgerWriter, IDelt
             return;
         }
 
-        await UpsertFacilityAsync(new Facility
-        {
-            FacilityId = "fac-dsm",
-            FacilityCode = "DSM",
-            Name = "Des Moines International",
-            FacilityTypeCode = "AIRPORT",
-            City = "Des Moines",
-            StateCode = "IA",
-            ZipCode = "50321",
-            Latitude = 41.5340m,
-            Longitude = -93.6631m,
-        }, cancellationToken);
+        // Production-shaped corridor graph. Silent ledger appends + one wake (avoid N SignalR floods on boot).
+        var graph = CorridorSyncSeed.BuildDemoCorridor();
+        long lastVersion = 0;
 
-        await UpsertEquipmentAsync(new Equipment
+        foreach (var facility in graph.Facilities)
         {
-            EquipmentId = "eq-ils-09",
-            FacilityId = "fac-dsm",
-            EquipmentTypeCode = "ILS",
-            Identifier = "ILS-09",
-            Name = "ILS Runway 09",
-            Manufacturer = "Raytheon",
-            Model = "Mark 20",
-        }, cancellationToken);
+            PutFacility(facility);
+            using var key = codec.Encode(new FacilityKey { FacilityId = facility.FacilityId });
+            using var payload = codec.Encode(facility);
+            lastVersion = await ledgerWriter.RecordUpsertAsync(
+                AviationEntityNames.Facility,
+                key.Memory,
+                payload.Memory,
+                cancellationToken: cancellationToken,
+                enqueueWake: false,
+                recordTelemetry: false);
+        }
 
-        await UpsertLogAsync(new MaintenanceLog
+        foreach (var equipment in graph.Equipment)
         {
-            MaintenanceLogId = "log-1",
-            MaintenanceActivityId = "act-1",
-            LogEntryType = "NOTE",
-            Message = "GS cabinet inspection complete",
-            LoggedAt = DateTimeOffset.UtcNow,
-            FacilityId = "fac-dsm",
-            EquipmentId = "eq-ils-09",
-            LocationLabel = "GS_CABINET",
-        }, cancellationToken);
+            PutEquipment(equipment);
+            using var key = codec.Encode(new EquipmentKey { EquipmentId = equipment.EquipmentId });
+            using var payload = codec.Encode(equipment);
+            lastVersion = await ledgerWriter.RecordUpsertAsync(
+                AviationEntityNames.Equipment,
+                key.Memory,
+                payload.Memory,
+                cancellationToken: cancellationToken,
+                enqueueWake: false,
+                recordTelemetry: false);
+        }
+
+        foreach (var log in graph.Logs)
+        {
+            PutLog(log);
+            using var key = codec.Encode(new MaintenanceLogKey { MaintenanceLogId = log.MaintenanceLogId });
+            using var payload = codec.Encode(log);
+            lastVersion = await ledgerWriter.RecordUpsertAsync(
+                AviationEntityNames.MaintenanceLog,
+                key.Memory,
+                payload.Memory,
+                cancellationToken: cancellationToken,
+                enqueueWake: false,
+                recordTelemetry: false);
+        }
+
+        if (lastVersion > 0)
+        {
+            await ledgerWriter.EnqueueWakeAsync(lastVersion, AviationEntityNames.Facility, cancellationToken);
+        }
     }
 }

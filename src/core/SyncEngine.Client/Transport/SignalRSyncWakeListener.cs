@@ -49,7 +49,10 @@ public sealed class SignalRSyncWakeListener : ISyncWakeListener
 
         _connection.Reconnected += async _ =>
         {
-            await _connection.InvokeAsync("RegisterSyncClient", _options.ClientId, CancellationToken.None);
+            await _connection.InvokeAsync(
+                "RegisterSyncClient",
+                string.IsNullOrWhiteSpace(_options.ClientId) ? _connection.ConnectionId ?? "client" : _options.ClientId,
+                CancellationToken.None);
             if (WakeReceived is not null)
             {
                 await WakeReceived(new SyncWake { LatestVersion = 0, EntityNames = [] }, CancellationToken.None);
@@ -57,8 +60,11 @@ public sealed class SignalRSyncWakeListener : ISyncWakeListener
         };
 
         await _connection.StartAsync(cancellationToken);
-        await _connection.InvokeAsync("RegisterSyncClient", _options.ClientId, cancellationToken);
-        _logger.LogInformation("SignalR sync hub connected at {HubUrl} as {ClientId}", hubUrl, _options.ClientId);
+        var clientId = string.IsNullOrWhiteSpace(_options.ClientId)
+            ? _connection.ConnectionId ?? "client"
+            : _options.ClientId;
+        await _connection.InvokeAsync("RegisterSyncClient", clientId, cancellationToken);
+        _logger.LogInformation("SignalR sync hub connected at {HubUrl} as {ClientId}", hubUrl, clientId);
     }
 
     public async ValueTask DisposeAsync()

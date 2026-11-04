@@ -83,7 +83,7 @@ public sealed class ReactivityLatencyTests : IClassFixture<WebApplicationFactory
             };
 
             await hub.StartAsync();
-            await hub.InvokeAsync("RegisterSyncClient");
+            await hub.InvokeAsync("RegisterSyncClient", "latency");
 
             const int samples = 20;
             for (var i = 0; i < samples; i++)

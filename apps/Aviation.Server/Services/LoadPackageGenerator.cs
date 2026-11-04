@@ -1,5 +1,5 @@
-using System.Text;
 using Aviation.Shared.Entities;
+using Aviation.Shared.Seed;
 
 namespace Aviation.Server.Services;
 
@@ -30,8 +30,8 @@ public sealed record LoadProfile(string Name, string Description, IReadOnlyList<
 }
 
 /// <summary>
-/// Builds aviation-flavored load packages in-process. Ported from tools/SyncEngine.LoadGen
-/// so the Aviation.Server can fire load without spawning a separate process.
+/// Builds production-shaped aviation load packages (related F→E→L graphs).
+/// Size comes from entity fan-out and realistic metadata — not megabyte pad blobs.
 /// </summary>
 public static class LoadPackageGenerator
 {
@@ -44,31 +44,32 @@ public static class LoadPackageGenerator
         {
             "smoke" => new LoadProfile(
                 "smoke",
-                "Fast sanity: a couple of tiny + small packages to warm the pipeline.",
+                "Fast sanity: dense related graphs with compact metadata (no pad inflation).",
                 [
-                    new("tiny", PackageCount: 2, Facilities: 5, EquipmentPerFacility: 2, LogsPerEquipment: 1, PadBytes: 256),
-                    new("small", PackageCount: 2, Facilities: 20, EquipmentPerFacility: 3, LogsPerEquipment: 2, PadBytes: 2_048),
+                    // PadBytes capped to compact structured metadata budget.
+                    new("tiny", PackageCount: 2, Facilities: 5, EquipmentPerFacility: 6, LogsPerEquipment: 4, PadBytes: 0),
+                    new("small", PackageCount: 2, Facilities: 20, EquipmentPerFacility: 8, LogsPerEquipment: 6, PadBytes: 0),
                 ]),
             "hard" => new LoadProfile(
                 "hard",
-                "Stress run: pads step up through 256 KB; mid-size catch-up pulls.",
+                "Stress run: wide Facility→Equipment→Log fan-out; realistic metadata only.",
                 [
-                    new("tiny", 4, 10, 2, 1, 512),
-                    new("small", 6, 40, 4, 2, 4_096),
-                    new("medium", 6, 80, 5, 3, 16_384),
-                    new("large", 4, 120, 6, 4, 65_536),
-                    new("xlarge", 2, 200, 8, 5, 262_144),
+                    new("tiny", 4, 10, 6, 4, 0),
+                    new("small", 6, 40, 8, 6, 0),
+                    new("medium", 6, 80, 10, 8, 0),
+                    new("large", 4, 120, 10, 10, 0),
+                    new("xlarge", 2, 200, 12, 10, 0),
                 ]),
             "crush" => new LoadProfile(
                 "crush",
-                "Aggressive crush: pads up to 1 MB; keeps total transfer in the hundreds of MB, not tens of GB.",
+                "Aggressive structural crush: max related-entity density, still no megabyte pads.",
                 [
-                    new("tiny", 10, 25, 3, 2, 2_048),
-                    new("small", 12, 60, 5, 3, 16_384),
-                    new("medium", 10, 100, 6, 4, 65_536),
-                    new("large", 8, 120, 8, 4, 262_144),
-                    new("xlarge", 4, 150, 8, 4, 524_288),
-                    new("mega", 2, 80, 6, 3, 1_048_576),
+                    new("tiny", 10, 25, 8, 6, 0),
+                    new("small", 12, 60, 10, 8, 0),
+                    new("medium", 10, 100, 12, 10, 0),
+                    new("large", 8, 120, 12, 12, 0),
+                    new("xlarge", 4, 150, 14, 12, 0),
+                    new("mega", 2, 200, 16, 14, 0),
                 ]),
             _ => throw new ArgumentOutOfRangeException(
                 nameof(name),
@@ -80,89 +81,44 @@ public static class LoadPackageGenerator
     public static LoadPackageRequest BuildPackage(string runId, LoadTier tier, int index)
     {
         var packageId = $"{runId}-{tier.Name}-{index:D3}";
-        var package = new LoadPackageRequest
+        // Reuse the shared production graph builder so load / bench / demo stay aligned.
+        var graph = CorridorSyncSeed.BuildScaled(
+            facilities: tier.Facilities,
+            equipmentPerFacility: tier.EquipmentPerFacility,
+            logsPerEquipment: tier.LogsPerEquipment,
+            deleteLogPercent: 0,
+            runId: packageId);
+
+        // Optional tiny pad budget kept for backward-compatible tier field; default profiles use 0.
+        if (tier.PadBytes > 0)
         {
-            PackageId = packageId,
-            Tier = tier.Name,
-            Facilities = new List<Facility>(tier.Facilities),
-            Equipment = new List<Equipment>(tier.Facilities * tier.EquipmentPerFacility),
-            MaintenanceLogs = new List<MaintenanceLog>(tier.Facilities * tier.EquipmentPerFacility * tier.LogsPerEquipment),
-        };
-
-        // All facilities in a package share one pad string so the graph itself stays modestly sized;
-        // MemoryPack still serializes the full string per entity.
-        var pad = CreatePad(tier.PadBytes, packageId);
-        var equipmentPad = CreatePad(Math.Max(256, tier.PadBytes / 4), packageId + "-eq");
-        var logPad = CreatePad(Math.Max(256, tier.PadBytes / 8), packageId + "-log");
-
-        for (var f = 0; f < tier.Facilities; f++)
-        {
-            var facilityId = $"{packageId}-fac-{f:D4}";
-            var city = SeedData.Cities[f % SeedData.Cities.Length];
-            var type = SeedData.FacilityTypes[f % SeedData.FacilityTypes.Length];
-            package.Facilities.Add(new Facility
+            var pad = CreateLegacyPad(tier.PadBytes, packageId);
+            foreach (var facility in graph.Facilities)
             {
-                FacilityId = facilityId,
-                FacilityCode = MakeCode(tier.Name, index, f),
-                Name = $"{city.Name} {type} Hub #{f} [{packageId}]",
-                FacilityTypeCode = type,
-                City = city.Name,
-                StateCode = city.State,
-                ZipCode = city.Zip,
-                Latitude = city.Lat + (f % 50) * 0.001m,
-                Longitude = city.Lon - (f % 50) * 0.001m,
-                OperationalStatus = f % 7 == 0 ? "MAINTENANCE" : "OPERATIONAL",
-                MetadataJson = pad,
-            });
-
-            for (var e = 0; e < tier.EquipmentPerFacility; e++)
-            {
-                var equipmentId = $"{facilityId}-eq-{e:D3}";
-                var eqType = SeedData.EquipmentTypes[e % SeedData.EquipmentTypes.Length];
-                package.Equipment.Add(new Equipment
-                {
-                    EquipmentId = equipmentId,
-                    FacilityId = facilityId,
-                    EquipmentTypeCode = eqType,
-                    Identifier = $"{eqType}-{f:D3}-{e:D2}",
-                    Name = $"{eqType} cabinet {e} at {city.Name}",
-                    OperationalStatus = e % 5 == 0 ? "DEGRADED" : "OPERATIONAL",
-                    Manufacturer = SeedData.Manufacturers[e % SeedData.Manufacturers.Length],
-                    Model = $"MK-{20 + e % 10}",
-                    MetadataJson = equipmentPad,
-                });
-
-                for (var l = 0; l < tier.LogsPerEquipment; l++)
-                {
-                    package.MaintenanceLogs.Add(new MaintenanceLog
-                    {
-                        MaintenanceLogId = $"{equipmentId}-log-{l:D3}",
-                        MaintenanceActivityId = $"{packageId}-act-{f:D4}-{e:D3}",
-                        LogEntryType = SeedData.LogTypes[l % SeedData.LogTypes.Length],
-                        Message = BuildLogMessage(city.Name, eqType, l, logPad),
-                        LoggedAt = DateTimeOffset.UtcNow.AddMinutes(-(f * 10 + e + l)),
-                        FacilityId = facilityId,
-                        EquipmentId = equipmentId,
-                        LocationLabel = SeedData.LocationLabels[(f + e + l) % SeedData.LocationLabels.Length],
-                        MetadataJson = logPad,
-                    });
-                }
+                facility.MetadataJson = pad;
             }
         }
 
-        return package;
+        return new LoadPackageRequest
+        {
+            PackageId = packageId,
+            Tier = tier.Name,
+            Facilities = graph.Facilities.ToList(),
+            Equipment = graph.Equipment.ToList(),
+            MaintenanceLogs = graph.Logs.ToList(),
+        };
     }
 
-    private static string CreatePad(int bytes, string salt)
+    private static string CreateLegacyPad(int bytes, string salt)
     {
         if (bytes <= 0)
         {
             return "{}";
         }
 
-        var sb = new StringBuilder(bytes + 64);
+        var token = "NAS-DSM-ILS-GS-CABINET-PARTS-QUOTE-NOTAM-WX-";
+        var sb = new System.Text.StringBuilder(bytes + 64);
         sb.Append("{\"salt\":\"").Append(salt).Append("\",\"blob\":\"");
-        const string token = "NAS-DSM-ILS-GS-CABINET-PARTS-QUOTE-NOTAM-WX-";
         while (sb.Length < bytes)
         {
             sb.Append(token);
@@ -175,42 +131,5 @@ public static class LoadPackageGenerator
 
         sb.Append("\"}");
         return sb.ToString();
-    }
-
-    private static string BuildLogMessage(string city, string eqType, int index, string pad)
-    {
-        var head = $"[{city}/{eqType}] inspection note #{index}: torque check, alarm clear, parts kit verified. ";
-        var take = Math.Min(pad.Length, 8_192);
-        return head + pad.AsSpan(0, take).ToString();
-    }
-
-    private static string MakeCode(string tier, int packageIndex, int facilityIndex)
-    {
-        var raw = $"{tier[0]}{packageIndex:D2}{facilityIndex:D3}";
-        return raw.Length <= 16 ? raw.ToUpperInvariant() : raw[..16].ToUpperInvariant();
-    }
-
-    internal sealed record City(string Name, string State, string Zip, decimal Lat, decimal Lon);
-
-    internal static class SeedData
-    {
-        // Drawn from the aviation / Upper Midwest corridor seed flavor.
-        public static readonly City[] Cities =
-        [
-            new("Des Moines", "IA", "50321", 41.5340m, -93.6631m),
-            new("Cedar Rapids", "IA", "52404", 41.8847m, -91.7108m),
-            new("Dubuque", "IA", "52001", 42.4020m, -90.7095m),
-            new("Waterloo", "IA", "50701", 42.5571m, -92.4003m),
-            new("Ames", "IA", "50010", 41.9922m, -93.6217m),
-            new("Iowa City", "IA", "52240", 41.6611m, -91.5302m),
-            new("Omaha", "NE", "68110", 41.3030m, -95.8940m),
-            new("Minneapolis", "MN", "55450", 44.8820m, -93.2218m),
-        ];
-
-        public static readonly string[] FacilityTypes = ["AIRPORT", "TRACON", "ARTCC", "FSS", "ATCT"];
-        public static readonly string[] EquipmentTypes = ["ILS", "VOR", "DME", "ASR", "ASDE", "AWOS", "GLIDESLOPE", "LOCALIZER"];
-        public static readonly string[] Manufacturers = ["Raytheon", "Thales", "Leonardo", "Honeywell", "Indra"];
-        public static readonly string[] LogTypes = ["NOTE", "INSPECTION", "REPAIR", "ALARM", "PARTS"];
-        public static readonly string[] LocationLabels = ["GS_CABINET", "LLZ_SHELTER", "RADAR_TOWER", "EQUIP_ROOM", "GATE_G12", "BIN_A3"];
     }
 }

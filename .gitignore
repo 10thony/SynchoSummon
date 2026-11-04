@@ -1,0 +1,96 @@
+## .NET build outputs
+**/bin/
+**/obj/
+**/out/
+*.dll
+*.exe
+*.pdb
+*.cache
+*.ilk
+*.meta
+*.obj
+*.iobj
+*.ipdb
+*.pgc
+*.pgd
+*.rsp
+*.sbr
+*.tlb
+*.tli
+*.tlh
+*.tmp
+*.tmp_proj
+*.log
+*.vspscc
+*.vssscc
+*.pidb
+*.svclog
+*.scc
+
+## NuGet
+**/packages/
+*.nupkg
+*.snupkg
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+## Test / coverage
+TestResults/
+[Tt]est[Rr]esult*/
+*.trx
+*.coverage
+*.coveragexml
+coverage*
+*.DotSettings.user
+
+## BenchmarkDotNet
+BenchmarkDotNet.Artifacts/
+
+## Visual Studio / VS Code / Rider / Cursor
+.vs/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json.example
+.idea/
+*.user
+*.userosscache
+*.suo
+*.sln.docstates
+*.rsuser
+*.DotSettings.user
+
+## MAUI / Android / iOS local
+**/Platforms/**/*.app
+**/bin/**/*.apk
+**/bin/**/*.aab
+**/obj/**/*.apk
+.maui/
+*.keystore
+*.jks
+
+## Local env / secrets
+.env
+.env.*
+!.env.example
+**/appsettings.*.local.json
+**/secrets.json
+**/Properties/launchSettings.local.json
+
+## OS junk
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+## SQLite / local sync DBs (client demos)
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+## Logs / dumps
+*.log
+*.dmp
+logs/
+**/App_Data/

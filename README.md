@@ -31,8 +31,11 @@ Add a facility in either client; the other updates after the SignalR wake + delt
 
 ## Benchmarks / tests
 
+Speed gates and BenchmarkDotNet runs use **production-shaped** Facility→Equipment→MaintenanceLog graphs (related entities + churn deletes), not Facility-only toys or megabyte pad blobs. Demo seed loads a multi-site corridor stack via `CorridorSyncSeed`.
+
 ```powershell
 dotnet test tests/SyncEngine.Tests
+dotnet run --project benchmarks/SyncEngine.Benchmarks -c Release -- --gates
 dotnet run --project benchmarks/SyncEngine.Benchmarks -c Release
 ```
 

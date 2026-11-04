@@ -1,4 +1,4 @@
-using Aviation.Shared.Entities;
+using Aviation.Shared.Seed;
 using BenchmarkDotNet.Attributes;
 using Microsoft.Extensions.Options;
 using SyncEngine.Abstractions.Protocol;
@@ -7,6 +7,9 @@ using SyncEngine.Server.Codec;
 
 namespace SyncEngine.Benchmarks;
 
+/// <summary>
+/// Throughput benches against production-shaped related-entity graphs (not Facility-only toys).
+/// </summary>
 [MemoryDiagnoser]
 [SimpleJob(warmupCount: 1, iterationCount: 3)]
 public class DeltaApplyBenchmarks
@@ -15,9 +18,11 @@ public class DeltaApplyBenchmarks
     private SqliteBatchApplier _applier = null!;
     private string _dbPath = null!;
     private DeltaBatch _batch = default!;
+    private SyncSeedGraph _graph = null!;
 
-    [Params(1000)]
-    public int ChangeCount { get; set; }
+    /// <summary>medium ≈ 2k mixed F/E/L + deletes; large ≈ 10k.</summary>
+    [Params("medium", "large")]
+    public string GraphScale { get; set; } = "medium";
 
     [GlobalSetup]
     public void Setup()
@@ -25,53 +30,23 @@ public class DeltaApplyBenchmarks
         _dbPath = Path.Combine(Path.GetTempPath(), $"sync-bench-{Guid.NewGuid():N}.db");
         var options = Options.Create(new SqliteSyncOptions { ConnectionString = $"Data Source={_dbPath}" });
         var factory = new SqliteConnectionFactory(options);
-        _applier = new SqliteBatchApplier(factory, [new SqliteEntityDeltaHandler(AviationEntityNames.Facility, factory)]);
+        _applier = new SqliteBatchApplier(factory, ProductionBatchFactory.CreateHandlers(factory));
 
-        var changes = new DeltaChange[ChangeCount];
-        for (var i = 0; i < ChangeCount; i++)
+        _graph = GraphScale switch
         {
-            var facility = new Facility
-            {
-                FacilityId = $"fac-{i}",
-                FacilityCode = $"F{i:D4}",
-                Name = $"Facility {i}",
-                FacilityTypeCode = "AIRPORT",
-                City = "Des Moines",
-                StateCode = "IA",
-                ZipCode = "50321",
-                Latitude = 41.5m + (i % 100) * 0.001m,
-                Longitude = -93.6m - (i % 100) * 0.001m,
-                OperationalStatus = "OPERATIONAL",
-            };
-
-            using var key = _codec.Encode(new FacilityKey { FacilityId = facility.FacilityId });
-            using var payload = _codec.Encode(facility);
-            changes[i] = new DeltaChange
-            {
-                Version = i + 1,
-                EntityName = AviationEntityNames.Facility,
-                Operation = DeltaOperation.Upsert,
-                KeyBytes = key.Memory.ToArray(),
-                PayloadBytes = payload.Memory.ToArray(),
-            };
-        }
-
-        _batch = new DeltaBatch
-        {
-            FromVersion = 0,
-            ToVersion = ChangeCount,
-            HasMore = false,
-            Changes = changes,
+            "large" => ProductionBatchFactory.LargeGraph(),
+            _ => ProductionBatchFactory.MediumGraph(),
         };
+        _batch = ProductionBatchFactory.ToBatch(_codec, _graph);
 
         // Warm schema once outside timed iterations.
         _applier.ApplyAsync(_batch).GetAwaiter().GetResult();
     }
 
-    [Benchmark(Description = "Apply 1k MemoryPack facility upserts to SQLite")]
+    [Benchmark(Description = "Apply production F→E→L graph (+deletes) to SQLite")]
     public Task ApplyBatchToSqlite() => _applier.ApplyAsync(_batch);
 
-    [Benchmark(Description = "Encode+decode DeltaBatch")]
+    [Benchmark(Description = "Encode+decode production DeltaBatch")]
     public DeltaBatch EncodeDecodeBatch()
     {
         using var buffer = _codec.EncodeBatch(_batch);

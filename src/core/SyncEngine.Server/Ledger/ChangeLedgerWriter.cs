@@ -21,7 +21,9 @@ public sealed class ChangeLedgerWriter(
         ReadOnlyMemory<byte> keyBytes,
         ReadOnlyMemory<byte> payloadBytes,
         string? correlationId = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool enqueueWake = true,
+        bool recordTelemetry = true)
     {
         return await RecordAsync(
             entityName,
@@ -29,14 +31,18 @@ public sealed class ChangeLedgerWriter(
             keyBytes,
             payloadBytes,
             correlationId,
-            cancellationToken);
+            cancellationToken,
+            enqueueWake,
+            recordTelemetry);
     }
 
     public async Task<long> RecordDeleteAsync(
         string entityName,
         ReadOnlyMemory<byte> keyBytes,
         string? correlationId = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool enqueueWake = true,
+        bool recordTelemetry = true)
     {
         return await RecordAsync(
             entityName,
@@ -44,8 +50,14 @@ public sealed class ChangeLedgerWriter(
             keyBytes,
             payloadBytes: null,
             correlationId,
-            cancellationToken);
+            cancellationToken,
+            enqueueWake,
+            recordTelemetry);
     }
+
+    /// <summary>Enqueue a single coalesced wake after a silent multi-row seed/batch.</summary>
+    public ValueTask EnqueueWakeAsync(long version, string entityName, CancellationToken cancellationToken = default)
+        => notifier.EnqueueWakeAsync(version, entityName, cancellationToken);
 
     private async Task<long> RecordAsync(
         string entityName,
@@ -53,7 +65,9 @@ public sealed class ChangeLedgerWriter(
         ReadOnlyMemory<byte> keyBytes,
         ReadOnlyMemory<byte>? payloadBytes,
         string? correlationId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool enqueueWake,
+        bool recordTelemetry)
     {
         var version = await ledger.AppendAsync(
             entityName,
@@ -63,19 +77,27 @@ public sealed class ChangeLedgerWriter(
             correlationId,
             cancellationToken);
 
-        var payloadLen = payloadBytes?.Length ?? 0;
-        telemetry.Record(new SyncTelemetryEvent
+        if (recordTelemetry)
         {
-            Kind = SyncTelemetryKind.Write,
-            Direction = "app→ledger",
-            EntityName = entityName,
-            ToVersion = version,
-            ChangeCount = 1,
-            Bytes = keyBytes.Length + payloadLen,
-            CorrelationId = correlationId,
-            Summary = $"{operation} {entityName} → sync_version={version}",
-            PayloadPreview = $"keyBytes={keyBytes.Length}, payloadBytes={payloadLen}",
-        });
+            var payloadLen = payloadBytes?.Length ?? 0;
+            telemetry.Record(new SyncTelemetryEvent
+            {
+                Kind = SyncTelemetryKind.Write,
+                Direction = "app→ledger",
+                EntityName = entityName,
+                ToVersion = version,
+                ChangeCount = 1,
+                Bytes = keyBytes.Length + payloadLen,
+                CorrelationId = correlationId,
+                Summary = $"{operation} {entityName} → sync_version={version}",
+                PayloadPreview = $"keyBytes={keyBytes.Length}, payloadBytes={payloadLen}",
+            });
+        }
+
+        if (!enqueueWake)
+        {
+            return version;
+        }
 
         if (orgStore.HasActiveTransaction)
         {

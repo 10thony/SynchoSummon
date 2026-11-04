@@ -118,21 +118,35 @@ public sealed class SyncTelemetryStore(
         }
 
         // Resolve lazily so listeners (e.g. LoadRunService) can depend on ISyncTelemetry.
-        _listeners ??= services.GetServices<ITelemetryListener>().ToArray();
-        foreach (var listener in _listeners)
+        try
         {
-            try
+            _listeners ??= services.GetServices<ITelemetryListener>().ToArray();
+            foreach (var listener in _listeners)
             {
-                listener.OnTelemetry(telemetryEvent);
-            }
-            catch
-            {
-                // Listeners must not break telemetry recording.
+                try
+                {
+                    listener.OnTelemetry(telemetryEvent);
+                }
+                catch
+                {
+                    // Listeners must not break telemetry recording.
+                }
             }
         }
+        catch
+        {
+            // Listener resolution must not break callers (hub register, wakes, writes).
+        }
 
-        _ = hubContext.Clients.Group(TelemetryHub.ViewersGroup)
-            .SendAsync("TelemetryEvent", telemetryEvent);
+        try
+        {
+            _ = hubContext.Clients.Group(TelemetryHub.ViewersGroup)
+                .SendAsync("TelemetryEvent", telemetryEvent);
+        }
+        catch
+        {
+            // Fan-out to telemetry viewers is best-effort.
+        }
     }
 
     public IReadOnlyList<SyncTelemetryEvent> GetRecent(int take = 200)

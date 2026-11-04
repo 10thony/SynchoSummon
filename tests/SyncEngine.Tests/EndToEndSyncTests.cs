@@ -77,9 +77,9 @@ public sealed class EndToEndSyncTests : IClassFixture<WebApplicationFactory<Prog
         var wakeLoopA = clientA.Pull.RunWakeLoopAsync(clientA.Cts.Token);
         var wakeLoopB = clientB.Pull.RunWakeLoopAsync(clientB.Cts.Token);
         await clientA.Hub.StartAsync();
-        await clientA.Hub.InvokeAsync("RegisterSyncClient");
+        await clientA.Hub.InvokeAsync("RegisterSyncClient", "e2e-A");
         await clientB.Hub.StartAsync();
-        await clientB.Hub.InvokeAsync("RegisterSyncClient");
+        await clientB.Hub.InvokeAsync("RegisterSyncClient", "e2e-B");
 
         clientA.Hub.On<SyncWake>("SyncWake", async wake => await clientA.Pull.NotifyWakeAsync(wake));
         clientB.Hub.On<SyncWake>("SyncWake", async wake => await clientB.Pull.NotifyWakeAsync(wake));
@@ -166,7 +166,7 @@ public sealed class EndToEndSyncTests : IClassFixture<WebApplicationFactory<Prog
             .Build();
         hub.On<SyncWake>("SyncWake", _ => Interlocked.Increment(ref wakesA));
         await hub.StartAsync();
-        await hub.InvokeAsync("RegisterSyncClient");
+        await hub.InvokeAsync("RegisterSyncClient", "e2e-burst");
 
         const int burst = 50;
         var posts = Enumerable.Range(0, burst).Select(async i =>

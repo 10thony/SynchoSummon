@@ -1,9 +1,0 @@
-{
-  "Aviation.Server, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null": "C:\\Projects\\SyncEngine\\apps\\Aviation.Server",
-  "Aviation.Shared, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null": "C:\\Projects\\SyncEngine\\apps\\Aviation.Shared",
-  "SyncEngine.Abstractions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null": "C:\\Projects\\SyncEngine\\src\\core\\SyncEngine.Abstractions",
-  "SyncEngine.Client, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null": "C:\\Projects\\SyncEngine\\src\\core\\SyncEngine.Client",
-  "SyncEngine.Client.Sqlite, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null": "C:\\Projects\\SyncEngine\\src\\core\\SyncEngine.Client.Sqlite",
-  "SyncEngine.Providers.Oracle, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null": "C:\\Projects\\SyncEngine\\src\\core\\SyncEngine.Providers.Oracle",
-  "SyncEngine.Server, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null": "C:\\Projects\\SyncEngine\\src\\core\\SyncEngine.Server"
-}
