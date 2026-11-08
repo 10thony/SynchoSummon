@@ -11,9 +11,6 @@ builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents()
     .AddCircuitOptions(options =>
     {
-        // Keep more buffered render batches so bursty sync-driven re-renders (debounced
-        // in FacilityViewService) do not trip the circuit into a disconnected state
-        // during long catch-up pulls.
         options.MaxBufferedUnacknowledgedRenderBatches = 20;
         options.DetailedErrors = builder.Environment.IsDevelopment();
         options.DisconnectedCircuitRetentionPeriod = TimeSpan.FromMinutes(3);
@@ -23,9 +20,16 @@ builder.Services.AddHttpClient();
 builder.Services.AddSyncEngineClient(options =>
 {
     options.ServerBaseAddress = builder.Configuration["SyncEngine:ServerBaseAddress"] ?? "http://localhost:5080";
-    options.ClientId = "blazor";
+    options.ClientId = "blazor-dev";
     options.EnableSignalR = true;
     options.EnableTelemetryReporting = true;
+    options.AllowInsecureHttp = true; // local demo only
+});
+builder.Services.AddSyncEngineClientSession(); // shared session SM; no periodic pull (SignalR + wake)
+builder.Services.AddSyncEngineClientCredentials(o =>
+{
+    o.ClientId = builder.Configuration["SyncEngine:ClientCredentials:ClientId"] ?? "blazor-dev";
+    o.ClientSecret = builder.Configuration["SyncEngine:ClientCredentials:ClientSecret"] ?? "blazor-dev-secret";
 });
 
 foreach (var entity in AviationEntityNames.All)

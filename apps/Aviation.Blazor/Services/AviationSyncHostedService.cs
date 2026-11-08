@@ -1,78 +1,60 @@
 using SyncEngine.Abstractions.Client;
-using SyncEngine.Abstractions.Protocol;
-using SyncEngine.Client;
 
 namespace Aviation.Blazor.Services;
 
+/// <summary>
+/// Blazor host adapter: drives <see cref="ISyncSession"/> and maps snapshots into
+/// <see cref="FacilityViewService"/> so the UI shares the core session vocabulary.
+/// </summary>
 public sealed class AviationSyncHostedService(
-    SyncPullService pullService,
-    ISyncWakeListener wakeListener,
+    ISyncSession session,
     FacilityViewService viewService,
     ILogger<AviationSyncHostedService> logger) : IHostedService
 {
-    private CancellationTokenSource? _cts;
-    private Task? _wakeLoop;
-
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-
-        // Wake pump: enqueue every wake into SyncPullService's channel. Also flip the UI
-        // status to "Syncing" so Home can show a non-blocking indicator while a pull runs.
-        wakeListener.WakeReceived += async (wake, ct) =>
-        {
-            viewService.SetStatus(FacilityViewSyncStatus.Syncing, "Receiving updates…");
-            await pullService.NotifyWakeAsync(wake, ct);
-        };
-
-        // Each batch apply moves us back to "Live". SetStatus is a no-op when the state
-        // is already Live, so this is cheap during long catch-ups.
-        pullService.BatchApplied += OnBatchApplied;
-
-        // Never block app startup / crash the host if sync is temporarily unavailable
-        // or a huge catch-up pull is in flight after load-gen.
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                viewService.SetStatus(FacilityViewSyncStatus.Syncing, "Starting sync…");
-                await wakeListener.StartAsync(_cts.Token);
-                await pullService.PullAndApplyAsync(_cts.Token);
-                viewService.SetStatus(FacilityViewSyncStatus.Live);
-                _wakeLoop = pullService.RunWakeLoopAsync(_cts.Token);
-                logger.LogInformation("Aviation Blazor sync host started.");
-            }
-            catch (OperationCanceledException)
-            {
-                // Shutting down — leave status alone.
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Blazor sync bootstrap failed; UI will still load.");
-                // Surface a lightweight error pill. UI continues to render cached data.
-                viewService.SetStatus(FacilityViewSyncStatus.Error, ex.Message);
-            }
-        }, CancellationToken.None);
-
-        return Task.CompletedTask;
+        session.SnapshotChanged += OnSnapshotChanged;
+        session.SyncCompleted += OnSyncCompleted;
+        OnSnapshotChanged(session.Snapshot);
+        return session.StartAsync(cancellationToken);
     }
-
-    private void OnBatchApplied(DeltaBatch batch) => viewService.MarkAppliedBatch();
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        pullService.BatchApplied -= OnBatchApplied;
-
-        if (_cts is not null)
-        {
-            await _cts.CancelAsync();
-        }
-
-        if (_wakeLoop is not null)
-        {
-            try { await _wakeLoop; } catch (OperationCanceledException) { }
-        }
-
-        await wakeListener.DisposeAsync();
+        session.SnapshotChanged -= OnSnapshotChanged;
+        session.SyncCompleted -= OnSyncCompleted;
+        await session.StopAsync(cancellationToken);
     }
+
+    private void OnSnapshotChanged(SyncSessionSnapshot snapshot)
+    {
+        var (status, message) = Map(snapshot);
+        viewService.SetStatus(status, message);
+        if (snapshot.Phase is SyncSessionPhase.Degraded && snapshot.LastError is { } ex)
+        {
+            logger.LogWarning(ex, "Blazor sync session degraded: {Status}", snapshot.DisplayStatus);
+        }
+    }
+
+    private void OnSyncCompleted() => viewService.MarkAppliedBatch();
+
+    private static (FacilityViewSyncStatus Status, string? Message) Map(SyncSessionSnapshot snapshot)
+        => snapshot.Phase switch
+        {
+            SyncSessionPhase.Stopped or SyncSessionPhase.Stopping or SyncSessionPhase.Connecting
+                => (FacilityViewSyncStatus.Initializing, snapshot.DisplayStatus),
+            SyncSessionPhase.CatchingUp
+                => (FacilityViewSyncStatus.CatchingUp, snapshot.DisplayStatus),
+            SyncSessionPhase.Syncing
+                => (FacilityViewSyncStatus.Syncing, snapshot.DisplayStatus),
+            SyncSessionPhase.Live
+                => (FacilityViewSyncStatus.Live, snapshot.DisplayStatus),
+            SyncSessionPhase.OfflinePolling
+                => (FacilityViewSyncStatus.Offline, snapshot.DisplayStatus),
+            SyncSessionPhase.Reconnecting
+                => (FacilityViewSyncStatus.Reconnecting, snapshot.DisplayStatus),
+            SyncSessionPhase.Degraded
+                => (FacilityViewSyncStatus.Error, snapshot.Detail ?? snapshot.LastError?.Message ?? snapshot.DisplayStatus),
+            _ => (FacilityViewSyncStatus.Initializing, snapshot.DisplayStatus),
+        };
 }

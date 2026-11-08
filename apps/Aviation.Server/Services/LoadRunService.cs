@@ -449,7 +449,7 @@ public sealed class LoadRunService(
 
         public void MarkFailed(DateTimeOffset at)
         {
-            Status = LoadRunStatus.Complete;
+            Status = LoadRunStatus.Failed;
             EndedUtc ??= at;
             CompletedUtc = at;
         }
@@ -645,6 +645,7 @@ public enum LoadRunStatus
     Running = 1,
     CatchingUp = 2,
     Complete = 3,
+    Failed = 4,
 }
 
 public sealed record LoadRunRequest(string? Profile);

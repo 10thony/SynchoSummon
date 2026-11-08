@@ -94,6 +94,7 @@
     .sync-pill-live { background: #e6f6ea; color: #197a3a; }
     .sync-pill-syncing { background: #fff5d6; color: #8a6400; }
     .sync-pill-syncing .sync-dot { animation: sync-pulse 1s ease-in-out infinite; }
+    .sync-pill-offline { background: #f0f0f0; color: #555; }
     .sync-pill-error { background: #fde3e3; color: #a1241f; }
     .sync-pill-initializing { background: #e6ecf5; color: #2a4a7f; }
 
@@ -110,13 +111,17 @@
 @code {
     private List<Facility> _items = [];
     private bool _initialized;
-    private bool _refreshing;
-    private bool _refreshRequested;
+    private readonly UiRefreshCoalescer _refresh = new();
+
+    private bool _refreshing => _refresh.Current is not UiRefreshCoalescer.Phase.Idle;
 
     private string StatusLabel => Facilities.Status switch
     {
         FacilityViewSyncStatus.Live => "Live",
         FacilityViewSyncStatus.Syncing => "Syncing…",
+        FacilityViewSyncStatus.CatchingUp => "Catching up…",
+        FacilityViewSyncStatus.Offline => "Offline",
+        FacilityViewSyncStatus.Reconnecting => "Reconnecting…",
         FacilityViewSyncStatus.Error => "Error",
         _ => "Initializing…",
     };
@@ -125,6 +130,9 @@
     {
         FacilityViewSyncStatus.Live => "live",
         FacilityViewSyncStatus.Syncing => "syncing",
+        FacilityViewSyncStatus.CatchingUp => "syncing",
+        FacilityViewSyncStatus.Offline => "offline",
+        FacilityViewSyncStatus.Reconnecting => "syncing",
         FacilityViewSyncStatus.Error => "error",
         _ => "initializing",
     };
@@ -157,20 +165,16 @@
 
     private async Task RefreshAsync()
     {
-        // Coalesce: if a refresh is already running, remember that one more is wanted
-        // and let the in-flight one re-loop. Prevents a backlog of concurrent decodes.
-        if (_refreshing)
+        // Coalesce via UiRefreshCoalescer: DirtyWhileRunning → one follow-up pass.
+        if (!_refresh.TryBegin())
         {
-            _refreshRequested = true;
             return;
         }
 
-        _refreshing = true;
         try
         {
             do
             {
-                _refreshRequested = false;
                 // Offload the decode/sort to the thread pool so the circuit thread stays
                 // free to pump SignalR messages while a large cache is being materialized.
                 var items = await Task.Run(() => Facilities.GetFacilities(100).ToList());
@@ -178,7 +182,7 @@
                 _initialized = true;
                 StateHasChanged();
             }
-            while (_refreshRequested);
+            while (_refresh.ConsumeDirty());
         }
         catch (Exception)
         {
@@ -188,7 +192,7 @@
         }
         finally
         {
-            _refreshing = false;
+            _refresh.End();
         }
     }
 

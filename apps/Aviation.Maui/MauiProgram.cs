@@ -26,9 +26,20 @@ public static class MauiProgram
         builder.Services.AddSyncEngineClient(options =>
         {
             options.ServerBaseAddress = "http://localhost:5080";
-            options.ClientId = "maui";
+            options.ClientId = "maui-dev";
             options.EnableSignalR = true;
             options.EnableTelemetryReporting = true;
+            options.AllowInsecureHttp = true; // local demo only
+        });
+        builder.Services.AddSyncEngineClientSession(o =>
+        {
+            // Safety-net periodic pull keeps the demo live if SignalR silently drops.
+            o.PeriodicPullInterval = TimeSpan.FromSeconds(5);
+        });
+        builder.Services.AddSyncEngineClientCredentials(o =>
+        {
+            o.ClientId = "maui-dev";
+            o.ClientSecret = "maui-dev-secret";
         });
         builder.Services.AddSyncEngineSqlite(
             options => options.ConnectionString = $"Data Source={dbPath}",

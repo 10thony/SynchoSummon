@@ -4,12 +4,19 @@ using SyncEngine.Client;
 
 namespace Aviation.Blazor.Services;
 
-/// <summary>Lightweight sync status shown in the Blazor UI.</summary>
+/// <summary>
+/// Lightweight sync status shown in the Blazor UI.
+/// Maps from <see cref="SyncEngine.Abstractions.Client.SyncSessionPhase"/> — keep this UI enum
+/// in sync with that core vocabulary when adding values.
+/// </summary>
 public enum FacilityViewSyncStatus
 {
     Initializing,
     Syncing,
+    CatchingUp,
     Live,
+    Offline,
+    Reconnecting,
     Error,
 }
 
@@ -149,14 +156,14 @@ public sealed class FacilityViewService : IDisposable
         RaiseStatusChanged();
     }
 
-    /// <summary>Marks the last successful apply time without a Status flip (used on each batch).</summary>
+    /// <summary>
+    /// Marks the last successful apply time. Session phase (Live vs Offline) is owned by
+    /// the core sync session via <see cref="SetStatus"/> — do not infer Live here.
+    /// </summary>
     public void MarkAppliedBatch()
     {
         LastUpdateUtc = DateTime.UtcNow;
-        if (Status != FacilityViewSyncStatus.Live)
-        {
-            SetStatus(FacilityViewSyncStatus.Live);
-        }
+        RaiseStatusChanged();
     }
 
     private void OnStoreEntityChanged(string entityName)

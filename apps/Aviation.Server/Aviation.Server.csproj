@@ -11,6 +11,7 @@
     <ProjectReference Include="..\Aviation.Shared\Aviation.Shared.csproj" />
     <ProjectReference Include="..\..\src\core\SyncEngine.Abstractions\SyncEngine.Abstractions.csproj" />
     <ProjectReference Include="..\..\src\core\SyncEngine.Server\SyncEngine.Server.csproj" />
+    <ProjectReference Include="..\..\src\core\SyncEngine.Auth\SyncEngine.Auth.csproj" />
     <ProjectReference Include="..\..\src\core\SyncEngine.Providers.Oracle\SyncEngine.Providers.Oracle.csproj" />
   </ItemGroup>
 
