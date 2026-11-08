@@ -19,6 +19,12 @@ public sealed class InMemoryCheckpointStore : ICheckpointStore
     {
         lock (_gate)
         {
+            if (_versions.TryGetValue(scope, out var current) && version < current)
+            {
+                throw new InvalidOperationException(
+                    $"Checkpoint rollback rejected for scope '{scope}': {version} < {current}.");
+            }
+
             _versions[scope] = version;
         }
 

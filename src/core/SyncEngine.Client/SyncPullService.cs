@@ -20,8 +20,21 @@ public sealed class SyncPullService
     private readonly ClientTelemetryReporter? _telemetry;
     private readonly ILogger<SyncPullService> _logger;
     private readonly SemaphoreSlim _pullLock = new(1, 1);
-    private readonly Channel<SyncWake> _wakeChannel = Channel.CreateUnbounded<SyncWake>(
-        new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
+    // Bounded: DropOldest — newer wakes supersede; dropped deltas trigger HTTP catch-up via gap/wake.
+    private readonly Channel<SyncWake> _wakeChannel = Channel.CreateBounded<SyncWake>(
+        new BoundedChannelOptions(256)
+        {
+            SingleReader = true,
+            SingleWriter = false,
+            FullMode = BoundedChannelFullMode.DropOldest,
+        });
+    private readonly Channel<byte[]> _deltaChannel = Channel.CreateBounded<byte[]>(
+        new BoundedChannelOptions(64)
+        {
+            SingleReader = true,
+            SingleWriter = false,
+            FullMode = BoundedChannelFullMode.DropOldest,
+        });
 
     public SyncPullService(
         ISyncTransport transport,
@@ -43,8 +56,14 @@ public sealed class SyncPullService
 
     public event Action<DeltaBatch>? BatchApplied;
 
+    /// <summary>Raised when the pull/apply pipeline enters a named phase (Idle, stream apply, HTTP catch-up, gap repair).</summary>
+    public event Action<SyncApplyPhase>? ApplyPhaseChanged;
+
     public ValueTask NotifyWakeAsync(SyncWake wake, CancellationToken cancellationToken = default)
         => _wakeChannel.Writer.WriteAsync(wake, cancellationToken);
+
+    public ValueTask NotifyStreamedDeltaAsync(ReadOnlyMemory<byte> encodedBatch, CancellationToken cancellationToken = default)
+        => _deltaChannel.Writer.WriteAsync(encodedBatch.ToArray(), cancellationToken);
 
     public async Task RunWakeLoopAsync(CancellationToken cancellationToken)
     {
@@ -61,8 +80,131 @@ public sealed class SyncPullService
         }
     }
 
+    public async Task RunStreamLoopAsync(CancellationToken cancellationToken)
+    {
+        await foreach (var bytes in _deltaChannel.Reader.ReadAllAsync(cancellationToken))
+        {
+            try
+            {
+                await ApplyStreamedBatchAsync(bytes, cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogError(ex, "Apply of streamed SyncDelta failed.");
+            }
+        }
+    }
+
+    public async Task ApplyStreamedBatchAsync(ReadOnlyMemory<byte> encodedBatch, CancellationToken cancellationToken = default)
+    {
+        DeltaBatch batch;
+        try
+        {
+            batch = _codec.DecodeBatch(encodedBatch.Span);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to decode streamed SyncDelta; falling back to HTTP pull.");
+            RaiseApplyPhase(SyncApplyPhase.HttpCatchUp);
+            await PullAndApplyAsync(cancellationToken);
+            RaiseApplyPhase(SyncApplyPhase.Idle);
+            return;
+        }
+
+        ClientTelemetryReport? report = null;
+        DeltaBatch? appliedBatch = null;
+        var needsHttpCatchUp = false;
+
+        await _pullLock.WaitAsync(cancellationToken);
+        try
+        {
+            var checkpoint = await _checkpointStore.GetVersionAsync(_options.CheckpointScope, cancellationToken);
+
+            if (batch.FromVersion > checkpoint)
+            {
+                _logger.LogInformation(
+                    "Stream gap detected (checkpoint={Checkpoint}, batchFrom={From}); HTTP catch-up.",
+                    checkpoint,
+                    batch.FromVersion);
+                needsHttpCatchUp = true;
+            }
+            else if (batch.ToVersion <= checkpoint)
+            {
+                return;
+            }
+            else
+            {
+                RaiseApplyPhase(SyncApplyPhase.ApplyingStream);
+                var sw = Stopwatch.StartNew();
+                if (batch.Changes is { Length: > 0 })
+                {
+                    await _applier.ApplyAsync(batch, cancellationToken);
+                }
+
+                await _checkpointStore.SetVersionAsync(batch.ToVersion, _options.CheckpointScope, cancellationToken);
+                sw.Stop();
+                appliedBatch = batch;
+
+                if (_telemetry is not null && batch.Changes is { Length: > 0 })
+                {
+                    report = new ClientTelemetryReport
+                    {
+                        ClientId = _options.ClientId,
+                        Kind = SyncTelemetryKind.ClientApply,
+                        FromVersion = checkpoint,
+                        ToVersion = batch.ToVersion,
+                        ChangeCount = batch.Changes.Length,
+                        Bytes = encodedBatch.Length,
+                        LatencyMs = sw.Elapsed.TotalMilliseconds,
+                        EntityNames = batch.Changes
+                            .Select(c => c.EntityName)
+                            .Distinct(StringComparer.OrdinalIgnoreCase)
+                            .ToArray(),
+                        Summary = $"{_options.ClientId} stream-applied {batch.Changes.Length} changes v{checkpoint}→{batch.ToVersion}",
+                    };
+                }
+            }
+        }
+        finally
+        {
+            _pullLock.Release();
+        }
+
+        if (needsHttpCatchUp)
+        {
+            RaiseApplyPhase(SyncApplyPhase.GapRepair);
+            await PullAndApplyAsync(cancellationToken);
+            RaiseApplyPhase(SyncApplyPhase.Idle);
+            return;
+        }
+
+        if (appliedBatch is { } notified)
+        {
+            BatchApplied?.Invoke(notified);
+        }
+
+        RaiseApplyPhase(SyncApplyPhase.Idle);
+
+        if (report is not null && _telemetry is not null)
+        {
+            try
+            {
+                await _telemetry.ReportAsync(report, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Stream apply telemetry report failed.");
+            }
+        }
+    }
+
     public async Task<PullResult> PullAndApplyAsync(CancellationToken cancellationToken = default)
     {
+        ClientTelemetryReport? report = null;
+        PullResult result;
+        List<DeltaBatch>? appliedBatches = null;
+
+        RaiseApplyPhase(SyncApplyPhase.HttpCatchUp);
         await _pullLock.WaitAsync(cancellationToken);
         try
         {
@@ -72,9 +214,16 @@ public sealed class SyncPullService
             var toVersion = fromVersion;
             var entities = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             long bytes = 0;
+            var iterations = 0;
 
             while (true)
             {
+                if (++iterations > _options.MaxPullIterations)
+                {
+                    throw new InvalidOperationException(
+                        $"Pull exceeded MaxPullIterations={_options.MaxPullIterations} (possible HasMore loop).");
+                }
+
                 using var buffer = await _transport.GetDeltasBytesAsync(
                     toVersion,
                     _options.BatchSize,
@@ -83,10 +232,22 @@ public sealed class SyncPullService
                 var batch = _codec.DecodeBatch(buffer.Memory.Span);
                 if (batch.Changes is not { Length: > 0 })
                 {
+                    if (batch.ToVersion > toVersion)
+                    {
+                        await _checkpointStore.SetVersionAsync(batch.ToVersion, _options.CheckpointScope, cancellationToken);
+                        toVersion = batch.ToVersion;
+                    }
+
                     break;
                 }
 
                 await _applier.ApplyAsync(batch, cancellationToken);
+                if (batch.ToVersion < toVersion)
+                {
+                    throw new InvalidOperationException(
+                        $"Server returned non-monotonic ToVersion {batch.ToVersion} after checkpoint {toVersion}.");
+                }
+
                 await _checkpointStore.SetVersionAsync(batch.ToVersion, _options.CheckpointScope, cancellationToken);
 
                 applied += batch.Changes.Length;
@@ -96,7 +257,7 @@ public sealed class SyncPullService
                     entities.Add(change.EntityName);
                 }
 
-                BatchApplied?.Invoke(batch);
+                (appliedBatches ??= []).Add(batch);
 
                 if (!batch.HasMore)
                 {
@@ -105,9 +266,10 @@ public sealed class SyncPullService
             }
 
             sw.Stop();
+            var entityArray = entities.ToArray();
             if (applied > 0 && _telemetry is not null)
             {
-                await _telemetry.ReportAsync(new ClientTelemetryReport
+                report = new ClientTelemetryReport
                 {
                     ClientId = _options.ClientId,
                     Kind = SyncTelemetryKind.ClientApply,
@@ -116,17 +278,52 @@ public sealed class SyncPullService
                     ChangeCount = applied,
                     Bytes = bytes,
                     LatencyMs = sw.Elapsed.TotalMilliseconds,
-                    EntityNames = entities.ToArray(),
+                    EntityNames = entityArray,
                     Summary = $"{_options.ClientId} applied {applied} changes v{fromVersion}→{toVersion}",
                     PayloadPreview = $"entities=[{string.Join(',', entities)}] bytes={bytes}",
-                }, cancellationToken);
+                };
             }
 
-            return new PullResult(fromVersion, toVersion, applied, entities.ToArray());
+            result = new PullResult(fromVersion, toVersion, applied, entityArray);
         }
         finally
         {
             _pullLock.Release();
+            RaiseApplyPhase(SyncApplyPhase.Idle);
+        }
+
+        if (appliedBatches is not null)
+        {
+            foreach (var batch in appliedBatches)
+            {
+                BatchApplied?.Invoke(batch);
+            }
+        }
+
+        if (report is not null && _telemetry is not null)
+        {
+            try
+            {
+                await _telemetry.ReportAsync(report, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Pull apply telemetry report failed.");
+            }
+        }
+
+        return result;
+    }
+
+    private void RaiseApplyPhase(SyncApplyPhase phase)
+    {
+        try
+        {
+            ApplyPhaseChanged?.Invoke(phase);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "ApplyPhaseChanged subscriber threw.");
         }
     }
 }

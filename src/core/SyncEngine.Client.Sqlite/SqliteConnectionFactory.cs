@@ -17,6 +17,7 @@ public sealed class SqliteConnectionFactory(IOptions<SqliteSyncOptions> options)
                 PRAGMA synchronous=NORMAL;
                 PRAGMA temp_store=MEMORY;
                 PRAGMA mmap_size=268435456;
+                PRAGMA busy_timeout=5000;
                 """;
             await cmd.ExecuteNonQueryAsync(cancellationToken);
         }

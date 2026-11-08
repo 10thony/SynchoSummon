@@ -12,35 +12,23 @@ public sealed class SqliteBatchApplier(
 {
     private readonly Dictionary<string, IEntityDeltaHandler> _handlers =
         handlers.ToDictionary(h => h.EntityName, StringComparer.OrdinalIgnoreCase);
+    private int _schemaReady;
 
     public async Task ApplyAsync(DeltaBatch batch, CancellationToken cancellationToken = default)
     {
         await using var connection = await connectionFactory.OpenAsync(cancellationToken);
-        await using (var ensure = connection.CreateCommand())
-        {
-            ensure.CommandText =
-                """
-                CREATE TABLE IF NOT EXISTS sync_entity (
-                    entity_name TEXT NOT NULL,
-                    entity_key BLOB NOT NULL,
-                    payload BLOB,
-                    PRIMARY KEY (entity_name, entity_key)
-                );
-                """;
-            await ensure.ExecuteNonQueryAsync(cancellationToken);
-        }
+        await EnsureEntitySchemaAsync(connection, cancellationToken);
 
         await using var transaction = (Microsoft.Data.Sqlite.SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
 
         foreach (var change in batch.Changes.OrderBy(c => c.Version))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (!_handlers.TryGetValue(change.EntityName, out var handler))
+            if (!_handlers.TryGetValue(change.EntityName, out _))
             {
                 throw new InvalidOperationException($"No handler for '{change.EntityName}'.");
             }
 
-            // Handlers open their own connections; for max throughput use direct SQL here.
             await using var command = connection.CreateCommand();
             command.Transaction = transaction;
 
@@ -65,9 +53,31 @@ public sealed class SqliteBatchApplier(
             }
 
             await command.ExecuteNonQueryAsync(cancellationToken);
-            _ = handler; // registered handlers remain for typed specialize later
         }
 
         await transaction.CommitAsync(cancellationToken);
+    }
+
+    private async Task EnsureEntitySchemaAsync(
+        Microsoft.Data.Sqlite.SqliteConnection connection,
+        CancellationToken cancellationToken)
+    {
+        if (Volatile.Read(ref _schemaReady) == 1)
+        {
+            return;
+        }
+
+        await using var ensure = connection.CreateCommand();
+        ensure.CommandText =
+            """
+            CREATE TABLE IF NOT EXISTS sync_entity (
+                entity_name TEXT NOT NULL,
+                entity_key BLOB NOT NULL,
+                payload BLOB,
+                PRIMARY KEY (entity_name, entity_key)
+            );
+            """;
+        await ensure.ExecuteNonQueryAsync(cancellationToken);
+        Volatile.Write(ref _schemaReady, 1);
     }
 }

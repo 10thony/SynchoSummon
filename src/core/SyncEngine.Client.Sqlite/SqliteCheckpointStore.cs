@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using SyncEngine.Abstractions.Client;
 
 namespace SyncEngine.Client.Sqlite;
@@ -21,17 +22,38 @@ public sealed class SqliteCheckpointStore(SqliteConnectionFactory connectionFact
     {
         await EnsureSchemaAsync(cancellationToken);
         await using var connection = await connectionFactory.OpenAsync(cancellationToken);
+        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
+
         await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText =
             """
             INSERT INTO sync_checkpoint(scope, version, updated_at_utc)
             VALUES ($scope, $version, $updated)
-            ON CONFLICT(scope) DO UPDATE SET version = excluded.version, updated_at_utc = excluded.updated_at_utc
+            ON CONFLICT(scope) DO UPDATE SET
+                version = excluded.version,
+                updated_at_utc = excluded.updated_at_utc
+            WHERE excluded.version >= sync_checkpoint.version
             """;
         command.Parameters.AddWithValue("$scope", scope);
         command.Parameters.AddWithValue("$version", version);
         command.Parameters.AddWithValue("$updated", DateTimeOffset.UtcNow.ToString("O"));
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        var affected = await command.ExecuteNonQueryAsync(cancellationToken);
+
+        await using var read = connection.CreateCommand();
+        read.Transaction = transaction;
+        read.CommandText = "SELECT version FROM sync_checkpoint WHERE scope = $scope";
+        read.Parameters.AddWithValue("$scope", scope);
+        var storedObj = await read.ExecuteScalarAsync(cancellationToken);
+        var stored = storedObj is long l ? l : storedObj is int i ? i : 0L;
+
+        if (version < stored && affected == 0)
+        {
+            throw new InvalidOperationException(
+                $"Checkpoint rollback rejected for scope '{scope}': {version} < {stored}.");
+        }
+
+        await transaction.CommitAsync(cancellationToken);
     }
 
     private async Task EnsureSchemaAsync(CancellationToken cancellationToken)
