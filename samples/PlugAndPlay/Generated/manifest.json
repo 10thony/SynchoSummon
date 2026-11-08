@@ -1,0 +1,102 @@
+[
+  {
+    "EntityName": "Facility",
+    "TableName": "FACILITY",
+    "SchemaName": "DEMO",
+    "KeyColumns": [
+      "FACILITY_ID"
+    ],
+    "Syncable": true,
+    "DependencyOrder": 0,
+    "ReferencedTables": [],
+    "Properties": [
+      {
+        "PropertyName": "FacilityId",
+        "ColumnName": "FACILITY_ID",
+        "Type": "string",
+        "IsKey": true,
+        "IsPayload": true,
+        "IsNullable": false
+      },
+      {
+        "PropertyName": "FacilityCode",
+        "ColumnName": "FACILITY_CODE",
+        "Type": "string",
+        "IsKey": false,
+        "IsPayload": true,
+        "IsNullable": false
+      },
+      {
+        "PropertyName": "Name",
+        "ColumnName": "NAME",
+        "Type": "string",
+        "IsKey": false,
+        "IsPayload": true,
+        "IsNullable": false
+      },
+      {
+        "PropertyName": "City",
+        "ColumnName": "CITY",
+        "Type": "string",
+        "IsKey": false,
+        "IsPayload": true,
+        "IsNullable": true
+      },
+      {
+        "PropertyName": "StateCode",
+        "ColumnName": "STATE_CODE",
+        "Type": "string",
+        "IsKey": false,
+        "IsPayload": true,
+        "IsNullable": true
+      }
+    ]
+  },
+  {
+    "EntityName": "Equipment",
+    "TableName": "EQUIPMENT",
+    "SchemaName": "DEMO",
+    "KeyColumns": [
+      "EQUIPMENT_ID"
+    ],
+    "Syncable": true,
+    "DependencyOrder": 1,
+    "ReferencedTables": [
+      "FACILITY"
+    ],
+    "Properties": [
+      {
+        "PropertyName": "EquipmentId",
+        "ColumnName": "EQUIPMENT_ID",
+        "Type": "string",
+        "IsKey": true,
+        "IsPayload": true,
+        "IsNullable": false
+      },
+      {
+        "PropertyName": "FacilityId",
+        "ColumnName": "FACILITY_ID",
+        "Type": "string",
+        "IsKey": false,
+        "IsPayload": true,
+        "IsNullable": false
+      },
+      {
+        "PropertyName": "Name",
+        "ColumnName": "NAME",
+        "Type": "string",
+        "IsKey": false,
+        "IsPayload": true,
+        "IsNullable": false
+      },
+      {
+        "PropertyName": "Status",
+        "ColumnName": "STATUS",
+        "Type": "string",
+        "IsKey": false,
+        "IsPayload": true,
+        "IsNullable": true
+      }
+    ]
+  }
+]

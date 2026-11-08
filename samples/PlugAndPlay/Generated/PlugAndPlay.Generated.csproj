@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>PlugAndPlay.Generated</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="MemoryPack" Version="1.21.4" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\core\SyncEngine.Abstractions\SyncEngine.Abstractions.csproj" />
+    <ProjectReference Include="..\..\..\src\core\SyncEngine.Server\SyncEngine.Server.csproj" />
+    <ProjectReference Include="..\..\..\src\core\SyncEngine.Client\SyncEngine.Client.csproj" />
+    <ProjectReference Include="..\..\..\src\core\SyncEngine.Client.Sqlite\SyncEngine.Client.Sqlite.csproj" />
+  </ItemGroup>
+</Project>

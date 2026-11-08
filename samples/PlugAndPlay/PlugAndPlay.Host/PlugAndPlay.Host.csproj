@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>PlugAndPlay.Host</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Generated\PlugAndPlay.Generated.csproj" />
+    <ProjectReference Include="..\..\..\src\core\SyncEngine.Server\SyncEngine.Server.csproj" />
+    <ProjectReference Include="..\..\..\src\core\SyncEngine.Auth\SyncEngine.Auth.csproj" />
+    <ProjectReference Include="..\..\..\src\core\SyncEngine.Client\SyncEngine.Client.csproj" />
+  </ItemGroup>
+
+</Project>
