@@ -14,6 +14,8 @@
   </Folder>
   <Folder Name="/src/core/">
     <Project Path="src/core/SyncEngine.Abstractions/SyncEngine.Abstractions.csproj" />
+    <Project Path="src/core/SyncEngine.Auth/SyncEngine.Auth.csproj" />
+    <Project Path="src/core/SyncEngine.Auth.WorkOS/SyncEngine.Auth.WorkOS.csproj" />
     <Project Path="src/core/SyncEngine.Client.Sqlite/SyncEngine.Client.Sqlite.csproj" />
     <Project Path="src/core/SyncEngine.Client/SyncEngine.Client.csproj" />
     <Project Path="src/core/SyncEngine.Providers.Oracle/SyncEngine.Providers.Oracle.csproj" />
@@ -24,5 +26,9 @@
   </Folder>
   <Folder Name="/tools/">
     <Project Path="tools/SyncEngine.LoadGen/SyncEngine.LoadGen.csproj" />
+  </Folder>
+  <Folder Name="/samples/">
+    <Project Path="samples/PlugAndPlay/Generated/PlugAndPlay.Generated.csproj" />
+    <Project Path="samples/PlugAndPlay/PlugAndPlay.Host/PlugAndPlay.Host.csproj" />
   </Folder>
 </Solution>

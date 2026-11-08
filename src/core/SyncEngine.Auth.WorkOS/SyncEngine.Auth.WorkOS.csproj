@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>SyncEngine.Auth.WorkOS</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.0" />
+    <PackageReference Include="WorkOS.net" Version="6.6.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SyncEngine.Abstractions\SyncEngine.Abstractions.csproj" />
+    <ProjectReference Include="..\SyncEngine.Auth\SyncEngine.Auth.csproj" />
+    <ProjectReference Include="..\SyncEngine.Server\SyncEngine.Server.csproj" />
+  </ItemGroup>
+
+</Project>
