@@ -8,6 +8,8 @@ var server = GetArg(args, "--server") ?? "http://localhost:5080";
 var profile = (GetArg(args, "--profile") ?? "crush").ToLowerInvariant();
 var concurrency = int.TryParse(GetArg(args, "--concurrency"), out var c) ? Math.Clamp(c, 1, 64) : 8;
 var onlyTier = GetArg(args, "--tiers")?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+var clientId = GetArg(args, "--client-id") ?? "loadgen-dev";
+var clientSecret = GetArg(args, "--client-secret") ?? "loadgen-dev-secret";
 
 if (args.Contains("--help") || args.Contains("-h"))
 {
@@ -19,6 +21,8 @@ if (args.Contains("--help") || args.Contains("-h"))
           --profile <name>       smoke | hard | crush (default crush)
           --concurrency <n>      parallel package posts (default 8)
           --tiers <a,b,c>        optional subset: tiny,small,medium,large,xlarge,mega
+          --client-id <id>       sync client id (default loadgen-dev)
+          --client-secret <s>    sync client secret
           --help
         """);
     return 0;
@@ -37,6 +41,27 @@ try
 catch (Exception ex)
 {
     Console.Error.WriteLine($"Server not reachable: {ex.Message}");
+    return 1;
+}
+
+try
+{
+    using var tokenResponse = await http.PostAsJsonAsync("sync/auth/token", new
+    {
+        client_id = clientId,
+        client_secret = clientSecret,
+    });
+    tokenResponse.EnsureSuccessStatusCode();
+    using var tokenDoc = JsonDocument.Parse(await tokenResponse.Content.ReadAsStringAsync());
+    var accessToken = tokenDoc.RootElement.GetProperty("access_token").GetString()
+        ?? throw new InvalidOperationException("Token response missing access_token.");
+    http.DefaultRequestHeaders.Authorization =
+        new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
+    Console.WriteLine($"Authenticated as {clientId}");
+}
+catch (Exception ex)
+{
+    Console.Error.WriteLine($"Auth failed: {ex.Message}");
     return 1;
 }
 

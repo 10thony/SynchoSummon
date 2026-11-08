@@ -25,9 +25,10 @@ public sealed class ReactivityLatencyTests : IClassFixture<WebApplicationFactory
     }
 
     [Fact]
-    public async Task WakeToApply_P95_Under150ms_SameProcess()
+    public async Task StreamToApply_P95_Under100ms_SameProcess()
     {
         var serverClient = _factory.CreateClient();
+        await AuthTestHelpers.AuthorizeAsync(serverClient);
         var baseAddress = serverClient.BaseAddress ?? new Uri("http://localhost");
         var dbPath = Path.Combine(Path.GetTempPath(), $"sync-lat-{Guid.NewGuid():N}.db");
 
@@ -38,6 +39,8 @@ public sealed class ReactivityLatencyTests : IClassFixture<WebApplicationFactory
             {
                 ServerBaseAddress = baseAddress.ToString().TrimEnd('/'),
                 BatchSize = 500,
+                AllowInsecureHttp = true,
+                EnableDeltaStreaming = true,
             });
             var sqliteFactory = new SqliteConnectionFactory(sqliteOptions);
             var checkpoint = new SqliteCheckpointStore(sqliteFactory);
@@ -46,7 +49,10 @@ public sealed class ReactivityLatencyTests : IClassFixture<WebApplicationFactory
             var applier = new SqliteBatchApplier(
                 sqliteFactory,
                 AviationEntityNames.All.Select(n => new SqliteEntityDeltaHandler(n, sqliteFactory)));
+            var token = await AuthTestHelpers.GetAccessTokenAsync(serverClient);
             var http = new HttpClient(_factory.Server.CreateHandler()) { BaseAddress = baseAddress };
+            http.DefaultRequestHeaders.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
             var transport = new HttpSyncTransport(http, codec, clientOptions);
             var pull = new SyncPullService(
                 transport, codec, applier, checkpoint, clientOptions, NullLogger<SyncPullService>.Instance);
@@ -55,19 +61,14 @@ public sealed class ReactivityLatencyTests : IClassFixture<WebApplicationFactory
 
             await using var hub = new HubConnectionBuilder()
                 .WithUrl(new Uri(baseAddress, SyncRoutes.Hub), o =>
-                    o.HttpMessageHandlerFactory = _ => _factory.Server.CreateHandler())
+                {
+                    o.HttpMessageHandlerFactory = _ => _factory.Server.CreateHandler();
+                    o.AccessTokenProvider = () => Task.FromResult<string?>(token);
+                })
                 .Build();
 
             var latencies = new List<long>();
             var cts = new CancellationTokenSource();
-            var wakeLoop = pull.RunWakeLoopAsync(cts.Token);
-
-            hub.On<SyncWake>("SyncWake", async wake =>
-            {
-                var started = Stopwatch.GetTimestamp();
-                await pull.NotifyWakeAsync(wake);
-                // Notify only queues; measure until BatchApplied.
-            });
 
             TaskCompletionSource<long>? pending = null;
             var pendingStart = 0L;
@@ -82,14 +83,21 @@ public sealed class ReactivityLatencyTests : IClassFixture<WebApplicationFactory
                 pending.TrySetResult(ms);
             };
 
+            hub.On<byte[]>(SyncHubEvents.SyncDelta, async bytes =>
+            {
+                Assert.NotEmpty(bytes);
+                _ = codec.DecodeBatch(bytes); // must be MemoryPack DeltaBatch
+                await pull.NotifyStreamedDeltaAsync(bytes);
+            });
+
+            var streamLoop = pull.RunStreamLoopAsync(cts.Token);
             await hub.StartAsync();
-            await hub.InvokeAsync("RegisterSyncClient", "latency");
+            await hub.InvokeAsync(SyncHubEvents.RegisterSyncClient, "latency");
 
             const int samples = 20;
             for (var i = 0; i < samples; i++)
             {
                 pending = new TaskCompletionSource<long>(TaskCreationOptions.RunContinuationsAsynchronously);
-                pendingStart = Stopwatch.GetTimestamp();
 
                 var facility = new Facility
                 {
@@ -104,7 +112,6 @@ public sealed class ReactivityLatencyTests : IClassFixture<WebApplicationFactory
                     Longitude = -93.6m,
                 };
 
-                // Start timer at POST — includes coalesce window + SignalR + pull + sqlite apply.
                 pendingStart = Stopwatch.GetTimestamp();
                 (await serverClient.PostAsJsonAsync("/api/facilities", facility)).EnsureSuccessStatusCode();
 
@@ -116,12 +123,12 @@ public sealed class ReactivityLatencyTests : IClassFixture<WebApplicationFactory
             latencies.Sort();
             var p95 = latencies[(int)Math.Clamp(Math.Ceiling(latencies.Count * 0.95) - 1, 0, latencies.Count - 1)];
             var p50 = latencies[latencies.Count / 2];
-            Console.WriteLine($"Reactivity latency ms: p50={p50} p95={p95} max={latencies[^1]} samples={string.Join(',', latencies)}");
+            Console.WriteLine($"Stream latency ms: p50={p50} p95={p95} max={latencies[^1]} samples={string.Join(',', latencies)}");
 
-            Assert.True(p95 < 150, $"p95 wake→apply was {p95}ms; plan gate is <150ms.");
+            Assert.True(p95 < 100, $"p95 stream→apply was {p95}ms; plan gate is <100ms.");
 
             await cts.CancelAsync();
-            try { await wakeLoop; } catch (OperationCanceledException) { }
+            try { await streamLoop; } catch (OperationCanceledException) { }
         }
         finally
         {

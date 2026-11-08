@@ -3,7 +3,6 @@ using System.Net.Http.Json;
 using Aviation.Shared.Entities;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.SignalR.Client;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using SyncEngine.Abstractions;
@@ -28,65 +27,68 @@ public sealed class EndToEndSyncTests : IClassFixture<WebApplicationFactory<Prog
     }
 
     [Fact]
-    public async Task DualClients_Converge_AfterServerMutation_ViaWakeAndPull()
+    public async Task DualClients_Converge_AfterServerMutation_ViaStreamedDelta()
     {
         var serverClient = _factory.CreateClient();
+        await AuthTestHelpers.AuthorizeAsync(serverClient);
         var baseAddress = serverClient.BaseAddress ?? new Uri("http://localhost");
 
         await using var clientA = await CreateSqliteClientAsync(baseAddress, "A");
         await using var clientB = await CreateSqliteClientAsync(baseAddress, "B");
 
-        // Initial catch-up from seed.
         var pullA0 = await clientA.Pull.PullAndApplyAsync();
         var pullB0 = await clientB.Pull.PullAndApplyAsync();
         Assert.True(pullA0.ToVersion > 0);
         Assert.Equal(pullA0.ToVersion, pullB0.ToVersion);
 
-        var facility = new Facility
-        {
-            FacilityId = $"fac-e2e-{Guid.NewGuid():N}"[..20],
-            FacilityCode = "E2E1",
-            Name = "E2E Convergence Field",
-            FacilityTypeCode = "AIRPORT",
-            City = "Ames",
-            StateCode = "IA",
-            ZipCode = "50010",
-            Latitude = 42.0m,
-            Longitude = -93.6m,
-            OperationalStatus = "OPERATIONAL",
-        };
+        var facility = NewFacility("e2e", "E2E1", "E2E Convergence Field");
+        using var expectedKey = clientA.Codec.Encode(new FacilityKey { FacilityId = facility.FacilityId });
+        var expectedKeyBytes = expectedKey.Memory.ToArray();
 
-        var appliedA = new TaskCompletionSource<PullResult>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var appliedB = new TaskCompletionSource<PullResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var appliedA = new TaskCompletionSource<DeltaBatch>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var appliedB = new TaskCompletionSource<DeltaBatch>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var streamPagesA = 0;
+        var streamPagesB = 0;
+
         clientA.Pull.BatchApplied += batch =>
         {
-            if (batch.Changes.Any(c => c.EntityName == AviationEntityNames.Facility))
+            if (ContainsFacilityKey(batch, expectedKeyBytes))
             {
-                appliedA.TrySetResult(new PullResult(batch.FromVersion, batch.ToVersion, batch.Changes.Length, [AviationEntityNames.Facility]));
+                appliedA.TrySetResult(batch);
             }
         };
         clientB.Pull.BatchApplied += batch =>
         {
-            if (batch.Changes.Any(c => c.EntityName == AviationEntityNames.Facility))
+            if (ContainsFacilityKey(batch, expectedKeyBytes))
             {
-                appliedB.TrySetResult(new PullResult(batch.FromVersion, batch.ToVersion, batch.Changes.Length, [AviationEntityNames.Facility]));
+                appliedB.TrySetResult(batch);
             }
         };
 
-        // Start wake loops + SignalR.
-        var wakeLoopA = clientA.Pull.RunWakeLoopAsync(clientA.Cts.Token);
-        var wakeLoopB = clientB.Pull.RunWakeLoopAsync(clientB.Cts.Token);
-        await clientA.Hub.StartAsync();
-        await clientA.Hub.InvokeAsync("RegisterSyncClient", "e2e-A");
-        await clientB.Hub.StartAsync();
-        await clientB.Hub.InvokeAsync("RegisterSyncClient", "e2e-B");
+        var streamLoopA = clientA.Pull.RunStreamLoopAsync(clientA.Cts.Token);
+        var streamLoopB = clientB.Pull.RunStreamLoopAsync(clientB.Cts.Token);
 
-        clientA.Hub.On<SyncWake>("SyncWake", async wake => await clientA.Pull.NotifyWakeAsync(wake));
-        clientB.Hub.On<SyncWake>("SyncWake", async wake => await clientB.Pull.NotifyWakeAsync(wake));
+        // Handlers MUST be registered before StartAsync.
+        clientA.Hub.On<byte[]>(SyncHubEvents.SyncDelta, async bytes =>
+        {
+            Interlocked.Increment(ref streamPagesA);
+            AssertValidMemoryPackBatch(clientA.Codec, bytes);
+            await clientA.Pull.NotifyStreamedDeltaAsync(bytes);
+        });
+        clientB.Hub.On<byte[]>(SyncHubEvents.SyncDelta, async bytes =>
+        {
+            Interlocked.Increment(ref streamPagesB);
+            AssertValidMemoryPackBatch(clientB.Codec, bytes);
+            await clientB.Pull.NotifyStreamedDeltaAsync(bytes);
+        });
+
+        await clientA.Hub.StartAsync();
+        await clientA.Hub.InvokeAsync(SyncHubEvents.RegisterSyncClient, "e2e-A");
+        await clientB.Hub.StartAsync();
+        await clientB.Hub.InvokeAsync(SyncHubEvents.RegisterSyncClient, "e2e-B");
 
         var sw = Stopwatch.StartNew();
-        var response = await serverClient.PostAsJsonAsync("/api/facilities", facility);
-        response.EnsureSuccessStatusCode();
+        (await serverClient.PostAsJsonAsync("/api/facilities", facility)).EnsureSuccessStatusCode();
 
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var done = await Task.WhenAll(
@@ -96,6 +98,9 @@ public sealed class EndToEndSyncTests : IClassFixture<WebApplicationFactory<Prog
 
         Assert.True(done[0].ToVersion >= pullA0.ToVersion + 1);
         Assert.Equal(done[0].ToVersion, done[1].ToVersion);
+        Assert.True(streamPagesA >= 1, "Client A never received SyncDelta bytes.");
+        Assert.True(streamPagesB >= 1, "Client B never received SyncDelta bytes.");
+        Assert.Equal(await clientA.Checkpoint.GetVersionAsync(), await clientB.Checkpoint.GetVersionAsync());
 
         var payloadA = await clientA.ReadFacilityPayloadAsync(facility.FacilityId);
         var payloadB = await clientB.ReadFacilityPayloadAsync(facility.FacilityId);
@@ -103,46 +108,78 @@ public sealed class EndToEndSyncTests : IClassFixture<WebApplicationFactory<Prog
         Assert.NotNull(payloadB);
         Assert.Equal(payloadA, payloadB);
 
-        // Reactivity gate from plan: p95 wake→apply < 150ms same machine (single sample must be well under).
         Assert.True(
             sw.ElapsedMilliseconds < 1500,
-            $"Wake-to-both-clients-applied took {sw.ElapsedMilliseconds}ms (expected << 1500ms for CI; target <150ms p95).");
+            $"Stream-to-both-clients-applied took {sw.ElapsedMilliseconds}ms.");
 
         await clientA.Cts.CancelAsync();
         await clientB.Cts.CancelAsync();
-        try { await wakeLoopA; } catch (OperationCanceledException) { }
-        try { await wakeLoopB; } catch (OperationCanceledException) { }
+        try { await streamLoopA; } catch (OperationCanceledException) { }
+        try { await streamLoopB; } catch (OperationCanceledException) { }
+    }
+
+    [Fact]
+    public async Task StreamGap_TriggersHttpCatchUp_ThenApplies()
+    {
+        var serverClient = _factory.CreateClient();
+        await AuthTestHelpers.AuthorizeAsync(serverClient);
+        var baseAddress = serverClient.BaseAddress ?? new Uri("http://localhost");
+        await using var client = await CreateSqliteClientAsync(baseAddress, "GAP");
+
+        var checkpoint = (await client.Pull.PullAndApplyAsync()).ToVersion;
+        var facility = NewFacility("gap", "GAP1", "Gap Catchup");
+        using var key = client.Codec.Encode(new FacilityKey { FacilityId = facility.FacilityId });
+        using var payload = client.Codec.Encode(facility);
+        var expectedKey = key.Memory.ToArray();
+
+        // Land the real mutation first so HTTP catch-up has durable data.
+        (await serverClient.PostAsJsonAsync("/api/facilities", facility)).EnsureSuccessStatusCode();
+
+        // Fabricate a stream page that starts AFTER the client's tip → must HTTP catch up.
+        var gapBatch = new DeltaBatch
+        {
+            FromVersion = checkpoint + 5,
+            ToVersion = checkpoint + 6,
+            HasMore = false,
+            Changes =
+            [
+                new DeltaChange
+                {
+                    Version = checkpoint + 6,
+                    EntityName = AviationEntityNames.Facility,
+                    Operation = DeltaOperation.Upsert,
+                    KeyBytes = expectedKey,
+                    PayloadBytes = payload.Memory.ToArray(),
+                },
+            ],
+        };
+        using var encodedGap = client.Codec.EncodeBatch(gapBatch);
+
+        await client.Pull.ApplyStreamedBatchAsync(encodedGap.Memory);
+
+        Assert.True(
+            await client.Checkpoint.GetVersionAsync() > checkpoint,
+            "Gap recovery should advance checkpoint via HTTP catch-up.");
+        Assert.NotNull(await client.ReadFacilityPayloadAsync(facility.FacilityId));
     }
 
     [Fact]
     public async Task Reconnect_CatchUp_PullsMissedChanges()
     {
         var serverClient = _factory.CreateClient();
+        await AuthTestHelpers.AuthorizeAsync(serverClient);
         var baseAddress = serverClient.BaseAddress ?? new Uri("http://localhost");
         await using var client = await CreateSqliteClientAsync(baseAddress, "R");
 
         var initial = await client.Pull.PullAndApplyAsync();
         var before = initial.ToVersion;
 
-        // Mutate while client is NOT listening to SignalR (simulates disconnect).
         for (var i = 0; i < 5; i++)
         {
-            var facility = new Facility
-            {
-                FacilityId = $"fac-rc-{i}-{Guid.NewGuid():N}"[..24],
-                FacilityCode = $"RC{i}",
-                Name = $"Reconnect {i}",
-                FacilityTypeCode = "AIRPORT",
-                City = "Iowa City",
-                StateCode = "IA",
-                ZipCode = "52240",
-                Latitude = 41.66m,
-                Longitude = -91.53m,
-            };
-            (await serverClient.PostAsJsonAsync("/api/facilities", facility)).EnsureSuccessStatusCode();
+            (await serverClient.PostAsJsonAsync("/api/facilities", NewFacility($"rc{i}", $"RC{i}", $"Reconnect {i}")))
+                .EnsureSuccessStatusCode();
         }
 
-        // Catch-up pull without wakes.
         var catchUp = await client.Pull.PullAndApplyAsync();
         Assert.True(catchUp.ToVersion >= before + 5);
         Assert.True(catchUp.AppliedCount >= 5);
@@ -150,81 +187,122 @@ public sealed class EndToEndSyncTests : IClassFixture<WebApplicationFactory<Prog
     }
 
     [Fact]
-    public async Task BurstWrites_Coalesce_AndClientsStayConsistent()
+    public async Task BurstWrites_StreamCoalesces_AndClientsApplyWithoutHttpPull()
     {
         var serverClient = _factory.CreateClient();
+        await AuthTestHelpers.AuthorizeAsync(serverClient);
         var baseAddress = serverClient.BaseAddress ?? new Uri("http://localhost");
         await using var clientA = await CreateSqliteClientAsync(baseAddress, "BA");
         await using var clientB = await CreateSqliteClientAsync(baseAddress, "BB");
 
-        await clientA.Pull.PullAndApplyAsync();
+        var tip = (await clientA.Pull.PullAndApplyAsync()).ToVersion;
         await clientB.Pull.PullAndApplyAsync();
 
-        var wakesA = 0;
-        var hub = new HubConnectionBuilder()
-            .WithUrl(new Uri(baseAddress, SyncRoutes.Hub), o => o.HttpMessageHandlerFactory = _ => _factory.Server.CreateHandler())
-            .Build();
-        hub.On<SyncWake>("SyncWake", _ => Interlocked.Increment(ref wakesA));
-        await hub.StartAsync();
-        await hub.InvokeAsync("RegisterSyncClient", "e2e-burst");
-
         const int burst = 50;
-        var posts = Enumerable.Range(0, burst).Select(async i =>
+        var ids = Enumerable.Range(0, burst)
+            .Select(i => NewFacility($"burst{i}", $"B{i:D3}", $"Burst {i}"))
+            .ToArray();
+
+        var seenA = 0;
+        var seenB = 0;
+        var streamPages = 0;
+        var doneA = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var doneB = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        clientA.Pull.BatchApplied += batch =>
         {
-            var facility = new Facility
+            var n = Interlocked.Add(ref seenA, CountFacilities(batch));
+            if (n >= burst)
             {
-                FacilityId = $"fac-burst-{i}-{Guid.NewGuid():N}"[..28],
-                FacilityCode = $"B{i:D3}",
-                Name = $"Burst {i}",
-                FacilityTypeCode = "AIRPORT",
-                City = "Des Moines",
-                StateCode = "IA",
-                ZipCode = "50321",
-                Latitude = 41.5m,
-                Longitude = -93.6m,
-            };
-            (await serverClient.PostAsJsonAsync("/api/facilities", facility)).EnsureSuccessStatusCode();
+                doneA.TrySetResult();
+            }
+        };
+        clientB.Pull.BatchApplied += batch =>
+        {
+            var n = Interlocked.Add(ref seenB, CountFacilities(batch));
+            if (n >= burst)
+            {
+                doneB.TrySetResult();
+            }
+        };
+
+        var streamLoopA = clientA.Pull.RunStreamLoopAsync(clientA.Cts.Token);
+        var streamLoopB = clientB.Pull.RunStreamLoopAsync(clientB.Cts.Token);
+
+        clientA.Hub.On<byte[]>(SyncHubEvents.SyncDelta, async bytes =>
+        {
+            Interlocked.Increment(ref streamPages);
+            AssertValidMemoryPackBatch(clientA.Codec, bytes);
+            await clientA.Pull.NotifyStreamedDeltaAsync(bytes);
         });
-        await Task.WhenAll(posts);
+        clientB.Hub.On<byte[]>(SyncHubEvents.SyncDelta, async bytes =>
+        {
+            AssertValidMemoryPackBatch(clientB.Codec, bytes);
+            await clientB.Pull.NotifyStreamedDeltaAsync(bytes);
+        });
 
-        // Allow coalesce window + delivery.
-        await Task.Delay(500);
+        await clientA.Hub.StartAsync();
+        await clientA.Hub.InvokeAsync(SyncHubEvents.RegisterSyncClient, "e2e-burst-A");
+        await clientB.Hub.StartAsync();
+        await clientB.Hub.InvokeAsync(SyncHubEvents.RegisterSyncClient, "e2e-burst-B");
 
-        var pullA = await clientA.Pull.PullAndApplyAsync();
-        var pullB = await clientB.Pull.PullAndApplyAsync();
-        Assert.Equal(pullA.ToVersion, pullB.ToVersion);
-        Assert.True(pullA.AppliedCount >= burst);
+        await Task.WhenAll(ids.Select(async facility =>
+        {
+            (await serverClient.PostAsJsonAsync("/api/facilities", facility)).EnsureSuccessStatusCode();
+        }));
 
-        // Coalescing should mean fewer wakes than writes.
-        Assert.True(wakesA > 0, "Expected at least one SyncWake.");
-        Assert.True(wakesA < burst, $"Expected coalesced wakes < {burst}, got {wakesA}.");
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        await Task.WhenAll(
+            doneA.Task.WaitAsync(timeout.Token),
+            doneB.Task.WaitAsync(timeout.Token));
 
-        await hub.DisposeAsync();
+        Assert.True(streamPages > 0, "Expected at least one SyncDelta page.");
+        Assert.True(streamPages < burst, $"Expected coalesced SyncDelta pages < {burst}, got {streamPages}.");
+        Assert.True(await clientA.Checkpoint.GetVersionAsync() >= tip + burst);
+        Assert.Equal(await clientA.Checkpoint.GetVersionAsync(), await clientB.Checkpoint.GetVersionAsync());
+
+        // Spot-check first/last without an HTTP pull — stream apply must have written SQLite.
+        Assert.NotNull(await clientA.ReadFacilityPayloadAsync(ids[0].FacilityId));
+        Assert.NotNull(await clientB.ReadFacilityPayloadAsync(ids[^1].FacilityId));
+
+        await clientA.Cts.CancelAsync();
+        await clientB.Cts.CancelAsync();
+        try { await streamLoopA; } catch (OperationCanceledException) { }
+        try { await streamLoopB; } catch (OperationCanceledException) { }
     }
 
     [Fact]
-    public async Task OfflinePush_ServerWins_AppearsInLedgerForOtherClients()
+    public async Task OfflinePush_StreamsToListeningClient()
     {
         var serverClient = _factory.CreateClient();
+        await AuthTestHelpers.AuthorizeAsync(serverClient);
         var baseAddress = serverClient.BaseAddress ?? new Uri("http://localhost");
         await using var online = await CreateSqliteClientAsync(baseAddress, "ON");
         await online.Pull.PullAndApplyAsync();
 
-        var codec = new MemoryPackDeltaCodec();
-        var facility = new Facility
+        var facility = NewFacility("off", "OFF1", "Offline Origin");
+        using var key = online.Codec.Encode(new FacilityKey { FacilityId = facility.FacilityId });
+        using var payload = online.Codec.Encode(facility);
+        var expectedKey = key.Memory.ToArray();
+
+        var applied = new TaskCompletionSource<DeltaBatch>(TaskCreationOptions.RunContinuationsAsynchronously);
+        online.Pull.BatchApplied += batch =>
         {
-            FacilityId = $"fac-off-{Guid.NewGuid():N}"[..22],
-            FacilityCode = "OFF1",
-            Name = "Offline Origin",
-            FacilityTypeCode = "AIRPORT",
-            City = "Waterloo",
-            StateCode = "IA",
-            ZipCode = "50701",
-            Latitude = 42.55m,
-            Longitude = -92.4m,
+            if (ContainsFacilityKey(batch, expectedKey))
+            {
+                applied.TrySetResult(batch);
+            }
         };
-        using var key = codec.Encode(new FacilityKey { FacilityId = facility.FacilityId });
-        using var payload = codec.Encode(facility);
+
+        var streamLoop = online.Pull.RunStreamLoopAsync(online.Cts.Token);
+        online.Hub.On<byte[]>(SyncHubEvents.SyncDelta, async bytes =>
+        {
+            AssertValidMemoryPackBatch(online.Codec, bytes);
+            await online.Pull.NotifyStreamedDeltaAsync(bytes);
+        });
+        await online.Hub.StartAsync();
+        await online.Hub.InvokeAsync(SyncHubEvents.RegisterSyncClient, "e2e-offline-listener");
+
         var batch = new DeltaBatch
         {
             FromVersion = 0,
@@ -237,20 +315,59 @@ public sealed class EndToEndSyncTests : IClassFixture<WebApplicationFactory<Prog
                     Version = 1,
                     EntityName = AviationEntityNames.Facility,
                     Operation = DeltaOperation.Upsert,
-                    KeyBytes = key.Memory.ToArray(),
+                    KeyBytes = expectedKey,
                     PayloadBytes = payload.Memory.ToArray(),
                 },
             ],
         };
-        using var encoded = codec.EncodeBatch(batch);
+        using var encoded = online.Codec.EncodeBatch(batch);
         using var content = new ByteArrayContent(encoded.Memory.ToArray());
         content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(SyncContentTypes.MemoryPack);
         var push = await serverClient.PostAsync(SyncRoutes.Push, content);
         push.EnsureSuccessStatusCode();
 
-        var pull = await online.Pull.PullAndApplyAsync();
-        Assert.True(pull.AppliedCount >= 1);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await applied.Task.WaitAsync(timeout.Token);
         Assert.NotNull(await online.ReadFacilityPayloadAsync(facility.FacilityId));
+
+        await online.Cts.CancelAsync();
+        try { await streamLoop; } catch (OperationCanceledException) { }
+    }
+
+    [Fact]
+    public async Task StaleStreamBatch_IsIgnored_CheckpointUnchanged()
+    {
+        var serverClient = _factory.CreateClient();
+        await AuthTestHelpers.AuthorizeAsync(serverClient);
+        var baseAddress = serverClient.BaseAddress ?? new Uri("http://localhost");
+        await using var client = await CreateSqliteClientAsync(baseAddress, "STALE");
+
+        var tip = (await client.Pull.PullAndApplyAsync()).ToVersion;
+        var facility = NewFacility("stale", "STL1", "Stale");
+        using var key = client.Codec.Encode(new FacilityKey { FacilityId = facility.FacilityId });
+        using var payload = client.Codec.Encode(facility);
+        var stale = new DeltaBatch
+        {
+            FromVersion = Math.Max(0, tip - 1),
+            ToVersion = tip,
+            HasMore = false,
+            Changes =
+            [
+                new DeltaChange
+                {
+                    Version = tip,
+                    EntityName = AviationEntityNames.Facility,
+                    Operation = DeltaOperation.Upsert,
+                    KeyBytes = key.Memory.ToArray(),
+                    PayloadBytes = payload.Memory.ToArray(),
+                },
+            ],
+        };
+        using var encoded = client.Codec.EncodeBatch(stale);
+        await client.Pull.ApplyStreamedBatchAsync(encoded.Memory);
+
+        Assert.Equal(tip, await client.Checkpoint.GetVersionAsync());
+        Assert.Null(await client.ReadFacilityPayloadAsync(facility.FacilityId));
     }
 
     public Task InitializeAsync() => Task.CompletedTask;
@@ -276,6 +393,9 @@ public sealed class EndToEndSyncTests : IClassFixture<WebApplicationFactory<Prog
             ServerBaseAddress = baseAddress.ToString().TrimEnd('/'),
             BatchSize = 500,
             EnableSignalR = true,
+            EnableDeltaStreaming = true,
+            AllowInsecureHttp = true,
+            ClientId = $"e2e-{name}",
         });
 
         var factory = new SqliteConnectionFactory(sqliteOptions);
@@ -287,8 +407,13 @@ public sealed class EndToEndSyncTests : IClassFixture<WebApplicationFactory<Prog
             factory,
             AviationEntityNames.All.Select(n => new SqliteEntityDeltaHandler(n, factory)));
 
+        var tokenClient = _factory.CreateClient();
+        var token = await AuthTestHelpers.GetAccessTokenAsync(tokenClient);
+
         var handler = _factory.Server.CreateHandler();
         var http = new HttpClient(handler) { BaseAddress = baseAddress };
+        http.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
         var transport = new HttpSyncTransport(http, codec, clientOptions);
         var pull = new SyncPullService(
             transport,
@@ -302,11 +427,51 @@ public sealed class EndToEndSyncTests : IClassFixture<WebApplicationFactory<Prog
             .WithUrl(new Uri(baseAddress, SyncRoutes.Hub), o =>
             {
                 o.HttpMessageHandlerFactory = _ => _factory.Server.CreateHandler();
+                o.AccessTokenProvider = () => Task.FromResult<string?>(token);
             })
             .WithAutomaticReconnect()
             .Build();
 
         return new TestClient(pull, checkpoint, factory, codec, hub, http, new CancellationTokenSource());
+    }
+
+    private static Facility NewFacility(string idSeed, string code, string name)
+    {
+        var id = $"fac-{idSeed}-{Guid.NewGuid():N}";
+        return new Facility
+        {
+            FacilityId = id.Length <= 28 ? id : id[..28],
+            FacilityCode = code,
+            Name = name,
+            FacilityTypeCode = "AIRPORT",
+            City = "Des Moines",
+            StateCode = "IA",
+            ZipCode = "50321",
+            Latitude = 41.5m,
+            Longitude = -93.6m,
+            OperationalStatus = "OPERATIONAL",
+        };
+    }
+
+    private static bool ContainsFacilityKey(DeltaBatch batch, byte[] expectedKey)
+        => batch.Changes is { Length: > 0 } changes
+           && changes.Any(c =>
+               string.Equals(c.EntityName, AviationEntityNames.Facility, StringComparison.OrdinalIgnoreCase)
+               && c.KeyBytes is not null
+               && c.KeyBytes.AsSpan().SequenceEqual(expectedKey));
+
+    private static int CountFacilities(DeltaBatch batch)
+        => batch.Changes?.Count(c =>
+               string.Equals(c.EntityName, AviationEntityNames.Facility, StringComparison.OrdinalIgnoreCase))
+           ?? 0;
+
+    private static void AssertValidMemoryPackBatch(MemoryPackDeltaCodec codec, byte[] bytes)
+    {
+        Assert.NotNull(bytes);
+        Assert.NotEmpty(bytes);
+        var batch = codec.DecodeBatch(bytes);
+        Assert.True(batch.ToVersion >= batch.FromVersion);
+        Assert.NotNull(batch.Changes);
     }
 
     private sealed class TestClient(
@@ -320,12 +485,13 @@ public sealed class EndToEndSyncTests : IClassFixture<WebApplicationFactory<Prog
     {
         public SyncPullService Pull { get; } = pull;
         public ICheckpointStore Checkpoint { get; } = checkpoint;
+        public MemoryPackDeltaCodec Codec { get; } = codec;
         public HubConnection Hub { get; } = hub;
         public CancellationTokenSource Cts { get; } = cts;
 
         public async Task<byte[]?> ReadFacilityPayloadAsync(string facilityId)
         {
-            using var keyBuffer = codec.Encode(new FacilityKey { FacilityId = facilityId });
+            using var keyBuffer = Codec.Encode(new FacilityKey { FacilityId = facilityId });
             var keyBytes = keyBuffer.Memory.ToArray();
 
             await using var connection = await sqlite.OpenAsync();
