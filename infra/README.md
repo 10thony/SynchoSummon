@@ -38,13 +38,14 @@ copy .env.example .env
 | Host | `localhost` |
 | Port | `1522` |
 | Service | `FREEPDB1` |
-| User | `nas_sim` |
-| Password | `NasSim_Dev1` (see `.env`) |
+| User | `nas_sim` (see `.env`) |
+| Password | set in `.env` as `ORACLE_APP_PASSWORD` (never commit) |
 
 ```
-User Id=nas_sim;Password=NasSim_Dev1;Data Source=localhost:1522/FREEPDB1
+User Id=nas_sim;Password=<from .env>;Data Source=localhost:1522/FREEPDB1
 jdbc:oracle:thin:@localhost:1522/FREEPDB1
 ```
+
 
 ## Init script bands
 

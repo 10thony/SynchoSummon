@@ -32,7 +32,7 @@ docker compose up -d
 docker compose ps
 ```
 
-Connection: `localhost:1522/FREEPDB1`, user `nas_sim` / `NasSim_Dev1`.
+Connection: `localhost:1522/FREEPDB1`, user `nas_sim` / password from `infra/.env` (`ORACLE_APP_PASSWORD`).
 
 ## What the seeds cover
 

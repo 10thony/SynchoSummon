@@ -1,0 +1,287 @@
+{
+  "title": "Implicit state machine refinements",
+  "updatedUtc": "2026-11-08T20:28:00Z",
+  "guidingPrinciple": "Elevate UX, DX, and AX together without breaking wire protocol or adopter-facing APIs. Prefer additive enums/snapshots in core; thin app facades keep existing bindings.",
+  "decisions": [
+    {
+      "id": "SM-01",
+      "machine": "Client sync session lifecycle (MAUI + Blazor hosts)",
+      "priority": "high",
+      "implicitBefore": [
+        "MauiSyncBootstrapper: _started + nullable CTS + free-form status strings",
+        "AviationSyncHostedService: nullable CTS + FacilityViewSyncStatus 4-value enum",
+        "Incompatible vocabularies across hosts"
+      ],
+      "decision": "Introduce core ISyncSession + SyncSessionPhase + SyncSessionSnapshot + SyncClientSession; MAUI/Blazor become thin adapters.",
+      "ux": "One status vocabulary (Connecting/CatchingUp/Live/OfflinePolling/Reconnecting/Degraded) with stable DisplayStatus; no false 'Connected' when SignalR is disabled.",
+      "dx": "Single place to reason about host loops; AddSyncEngineClientSession for periodic-pull opt-in.",
+      "ax": "Agents edit SyncClientSession once instead of two divergent hosts; enums are greppable contracts.",
+      "breakingRisk": "low",
+      "compatibility": "MauiSyncBootstrapper keeps StatusChanged/ErrorRaised/SyncCompleted string API. Blazor FacilityViewSyncStatus expanded additively.",
+      "status": "implemented",
+      "files": [
+        "src/core/SyncEngine.Abstractions/Client/SyncSession.cs",
+        "src/core/SyncEngine.Client/SyncClientSession.cs",
+        "src/core/SyncEngine.Client/ServiceCollectionExtensions.cs",
+        "apps/Aviation.Maui/Services/MauiSyncBootstrapper.cs",
+        "apps/Aviation.Blazor/Services/AviationSyncHostedService.cs",
+        "apps/Aviation.Maui/MauiProgram.cs",
+        "apps/Aviation.Blazor/Program.cs"
+      ]
+    },
+    {
+      "id": "SM-02",
+      "machine": "SignalR hub link",
+      "priority": "high",
+      "implicitBefore": [
+        "Nullable HubConnection",
+        "WithAutomaticReconnect with no Reconnecting/Closed surfacing",
+        "Hosts assumed Connected after StartAsync even when EnableSignalR=false"
+      ],
+      "decision": "Add SyncHubLinkState + LinkState/LinkStateChanged on ISyncWakeListener; SignalR listener publishes Disabled/Connecting/Connected/Reconnecting/Failed/Disconnected; reject double-start.",
+      "ux": "UI can show Reconnecting and OfflinePolling from real hub events.",
+      "dx": "Connection state is one property, not inferred from exceptions.",
+      "ax": "Safe to extend hub lifecycle without hunting string status writes.",
+      "breakingRisk": "medium-for-custom-implementors",
+      "compatibility": "Only in-box SignalRSyncWakeListener implements ISyncWakeListener.",
+      "status": "implemented",
+      "files": [
+        "src/core/SyncEngine.Abstractions/Client/ISyncTransport.cs",
+        "src/core/SyncEngine.Client/Transport/SignalRSyncWakeListener.cs"
+      ]
+    },
+    {
+      "id": "SM-03",
+      "machine": "SyncPullService apply / catch-up phases",
+      "priority": "high",
+      "implicitBefore": [
+        "needsHttpCatchUp bool",
+        "HasMore paging loop",
+        "No public phase for gap vs stream vs HTTP"
+      ],
+      "decision": "Add SyncApplyPhase + ApplyPhaseChanged; SyncClientSession maps GapRepair/HttpCatchUp → CatchingUp and ApplyingStream → Syncing when appropriate. Do not reorder lock/catch-up semantics.",
+      "ux": "Catch-up vs live stream is visible to session consumers.",
+      "dx": "Phase names match product-contract language (gap → HTTP pull).",
+      "ax": "Agents can subscribe to phases instead of parsing logs.",
+      "breakingRisk": "low",
+      "compatibility": "Additive event only; pull ordering unchanged.",
+      "status": "implemented",
+      "files": [
+        "src/core/SyncEngine.Client/SyncPullService.cs",
+        "src/core/SyncEngine.Abstractions/Client/SyncSession.cs"
+      ]
+    },
+    {
+      "id": "SM-04",
+      "machine": "Transport mode flags",
+      "priority": "medium",
+      "implicitBefore": [
+        "EnableSignalR × EnableDeltaStreaming × EnableTelemetryReporting boolean matrix"
+      ],
+      "decision": "Add SyncTransportMode + SyncClientOptions.ResolveTransportMode(); keep booleans as configuration source of truth for now.",
+      "ux": "Session snapshot shows named mode.",
+      "dx": "Named modes document intended operating points.",
+      "ax": "Avoids agents misreading flag combinations.",
+      "breakingRisk": "none",
+      "compatibility": "Additive helper; flags retained.",
+      "status": "implemented",
+      "files": [
+        "src/core/SyncEngine.Client/SyncClientOptions.cs",
+        "src/core/SyncEngine.Abstractions/Client/SyncSession.cs"
+      ]
+    },
+    {
+      "id": "SM-05",
+      "machine": "Auth / token acquisition",
+      "priority": "medium-high",
+      "implicitBefore": [
+        "Cached token + expiry with gate",
+        "Failures looked like generic network errors",
+        "No observable credential state"
+      ],
+      "decision": "Add SyncCredentialState + optional ISyncCredentialStatus; ClientCredentialsTokenProvider publishes Unconfigured/Valid/Refreshing/Expired/Failed. Defer 401-forced refresh to a follow-up to avoid HTTP handler behavior change this pass.",
+      "ux": "Foundation to show auth failures distinctly from sync/network errors.",
+      "dx": "Credential lifecycle is typed.",
+      "ax": "Optional interface keeps NullSyncCredentialProvider untouched.",
+      "breakingRisk": "low",
+      "compatibility": "ISyncCredentialProvider unchanged; status is additive.",
+      "status": "implemented",
+      "followUp": "Wire 401 → force refresh in SyncAuthDelegatingHandler; fold Failed into SyncSessionSnapshot.Detail.",
+      "files": [
+        "src/core/SyncEngine.Abstractions/Auth/ISyncCredentialStatus.cs",
+        "src/core/SyncEngine.Client/Auth/ClientCredentialsTokenProvider.cs"
+      ]
+    },
+    {
+      "id": "SM-06",
+      "machine": "Client outbox",
+      "priority": "medium",
+      "implicitBefore": [
+        "PendingCount + flush lock",
+        "No named Empty/Pending/Flushing/Failed",
+        "Apps do not auto-flush on reconnect"
+      ],
+      "decision": "Expose SyncOutboxPhase + PhaseChanged on ClientOutbox. Defer OfflineSyncCoordinator (flush-on-reconnect) to avoid changing demo mutation paths this pass.",
+      "ux": "Outbox can drive a pending-count badge later without guessing.",
+      "dx": "Flush lifecycle is explicit.",
+      "ax": "Phase enum documents legal transitions.",
+      "breakingRisk": "low",
+      "compatibility": "Additive; FlushAsync semantics unchanged.",
+      "status": "implemented",
+      "followUp": "IOfflineSyncCoordinator: OnConnectivityRestored → Flush → Pull; generator hooks for entity writes.",
+      "files": [
+        "src/core/SyncEngine.Client/Offline/ClientOutbox.cs"
+      ]
+    },
+    {
+      "id": "SM-07",
+      "machine": "Blazor FacilityViewSyncStatus + Home refresh coalesce",
+      "priority": "medium",
+      "implicitBefore": [
+        "Initializing/Syncing/Live/Error only",
+        "_refreshing + _refreshRequested boolean pair"
+      ],
+      "decision": "Expand FacilityViewSyncStatus with CatchingUp/Offline/Reconnecting; map from SyncSessionSnapshot; extract UiRefreshCoalescer (Idle/Running/DirtyWhileRunning). MarkAppliedBatch no longer forces Live (session owns phase).",
+      "ux": "Pill reflects offline/reconnect/catch-up; offline successful polls stay Offline.",
+      "dx": "UI enum documented as projection of SyncSessionPhase.",
+      "ax": "Refresh coalescer is a named SM agents can reuse.",
+      "breakingRisk": "low",
+      "compatibility": "CSS adds offline pill; existing classes preserved.",
+      "status": "implemented",
+      "files": [
+        "apps/Aviation.Blazor/Services/FacilityViewService.cs",
+        "apps/Aviation.Blazor/Services/UiRefreshCoalescer.cs",
+        "apps/Aviation.Blazor/Components/Pages/Home.razor"
+      ]
+    },
+    {
+      "id": "SM-08",
+      "machine": "Oracle / org store transaction session",
+      "priority": "medium",
+      "implicitBefore": [
+        "HasActiveTransaction bool + nullable connection/transaction + _disposed"
+      ],
+      "decision": "Add OrgStoreSessionState (Idle/Open/TransactionOpen/Disposed); keep HasActiveTransaction as derived convenience for ChangeLedgerWriter wake deferral.",
+      "ux": "No direct UX; clearer wake timing contract for reliability.",
+      "dx": "Named states around post-commit wake.",
+      "ax": "Agents less likely to break wake-on-commit by flipping a naked bool.",
+      "breakingRisk": "low-medium",
+      "compatibility": "HasActiveTransaction retained; SessionState additive on IOrgStore (two implementors updated).",
+      "status": "implemented",
+      "files": [
+        "src/core/SyncEngine.Abstractions/Store/IOrgStore.cs",
+        "src/core/SyncEngine.Providers.Oracle/OracleOrgStore.cs",
+        "src/core/SyncEngine.Server/Store/NoOpOrgStore.cs"
+      ]
+    },
+    {
+      "id": "SM-09",
+      "machine": "LoadRunStatus",
+      "priority": "low",
+      "implicitBefore": [
+        "MarkFailed collapsed into Complete"
+      ],
+      "decision": "Add LoadRunStatus.Failed; MarkFailed sets Failed.",
+      "ux": "Telemetry/load UI can distinguish failure from success.",
+      "dx": "Enum matches reality.",
+      "ax": "No silent Complete-on-failure.",
+      "breakingRisk": "low",
+      "compatibility": "Additive enum value; ToString() API gains 'Failed'.",
+      "status": "implemented",
+      "files": [
+        "apps/Aviation.Server/Services/LoadRunService.cs"
+      ]
+    },
+    {
+      "id": "SM-10",
+      "machine": "CoalescingSyncNotifier server streamer",
+      "priority": "medium",
+      "implicitBefore": [
+        "SeedingHwm/IdleWait/Draining/CoalesceWindow/FlushingPages/OversizedWakeOnly in loop locals"
+      ],
+      "decision": "Defer control-flow rewrite. Prefer additive NotifierPhase telemetry in a follow-up to avoid latency/coalesce regressions.",
+      "ux": "No change this pass.",
+      "dx": "Documented as intentional deferral.",
+      "ax": "Avoid risky rewrite without telemetry hooks first.",
+      "breakingRisk": "medium-if-rewritten",
+      "compatibility": "Unchanged.",
+      "status": "deferred",
+      "approval": "approved-defer-2026-11-08",
+      "followUp": "NotifierPhase + structured telemetry (Coalescing, StreamingPage, WakeOnly)."
+    },
+    {
+      "id": "SM-11",
+      "machine": "Generator lifecycle emission gap",
+      "priority": "high-meta",
+      "implicitBefore": [
+        "Generator emits DI/handlers only; every adopter reinvents session host"
+      ],
+      "decision": "Ship SyncClientSession in Client package (opt-in via existing AddSyncEngineClient + AddSyncEngineClientSession). Do not force-generate host runners; document adopter path and wire PlugAndPlay with SyncSessionHostedService.",
+      "ux": "Adopters get correct status if they use ISyncSession.",
+      "dx": "One recommended host instead of copy-paste Aviation code.",
+      "ax": "Generator remains schema-focused; lifecycle lives in reusable core (easier for agents than emitted one-offs).",
+      "breakingRisk": "low",
+      "compatibility": "Opt-in runAsHostedService; Aviation UI hosts keep thin adapters.",
+      "status": "implemented",
+      "approval": "approved-implement-2026-11-08",
+      "files": [
+        "src/core/SyncEngine.Client/SyncSessionHostedService.cs",
+        "src/core/SyncEngine.Client/ServiceCollectionExtensions.cs",
+        "samples/PlugAndPlay/PlugAndPlay.Host/Program.cs",
+        "docs/product-contract.md",
+        "README.md"
+      ]
+    },
+    {
+      "id": "SM-12",
+      "machine": "Checkpoint / schema bootstrap flags",
+      "priority": "low",
+      "implicitBefore": [
+        "SqliteCheckpointStore._initialized",
+        "SqliteBatchApplier._schemaReady"
+      ],
+      "decision": "Keep as one-shot init flags. Expose checkpoint on SyncSessionSnapshot via successful pull ToVersion (already done) rather than wrapping Lazy init.",
+      "ux": "Connected (vN) when checkpoint known.",
+      "dx": "Avoid over-abstracting bootstrap.",
+      "ax": "Less noise in abstractions package.",
+      "breakingRisk": "none",
+      "compatibility": "Unchanged stores.",
+      "status": "accepted-keep-implicit"
+    },
+    {
+      "id": "SM-13",
+      "machine": "SyncHub Context.Items registration",
+      "priority": "low",
+      "implicitBefore": [
+        "ConnectedUnregistered vs Registered via Context.Items"
+      ],
+      "decision": "Defer typed presence bag; telemetry already records connect/disconnect.",
+      "ux": "No change.",
+      "dx": "Low payoff vs risk.",
+      "ax": "Leave until telemetry dashboard needs presence.",
+      "breakingRisk": "low",
+      "compatibility": "Unchanged.",
+      "status": "deferred",
+      "approval": "approved-defer-2026-11-08"
+    }
+  ],
+  "refinementOrderExecuted": [
+    "SM-01",
+    "SM-02",
+    "SM-03",
+    "SM-04",
+    "SM-05",
+    "SM-06",
+    "SM-07",
+    "SM-08",
+    "SM-09",
+    "SM-11",
+    "SM-12"
+  ],
+  "deferred": [
+    "SM-10",
+    "SM-13",
+    "SM-05-followUp-401-refresh",
+    "SM-06-followUp-offline-coordinator"
+  ]
+}

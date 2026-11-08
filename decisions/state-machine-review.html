@@ -1,0 +1,972 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>State machine review</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #f3f1ec;
+      --bg-ink: #1c1f24;
+      --paper: #fffcf7;
+      --line: #d9d3c7;
+      --muted: #6b6560;
+      --text: #1c1f24;
+      --accent: #0f6e56;
+      --accent-soft: #d9efe6;
+      --warn: #9a5b12;
+      --warn-soft: #f5e6d0;
+      --hold: #5c5f6a;
+      --hold-soft: #e8e9ed;
+      --risk: #8b2e2e;
+      --risk-soft: #f3dede;
+      --focus: #0f6e56;
+      --radius: 10px;
+      --shadow: 0 1px 0 rgba(28, 31, 36, 0.06);
+      --font: "DM Sans", "Segoe UI", sans-serif;
+      --mono: "IBM Plex Mono", ui-monospace, monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: var(--font);
+      color: var(--text);
+      background:
+        radial-gradient(1200px 500px at 10% -10%, #e7efe9 0%, transparent 55%),
+        radial-gradient(900px 400px at 100% 0%, #efe8db 0%, transparent 50%),
+        var(--bg);
+      line-height: 1.45;
+      min-height: 100vh;
+      padding-bottom: 11rem;
+    }
+
+    .shell {
+      width: min(1080px, calc(100% - 2rem));
+      margin: 0 auto;
+      padding: 2rem 0 1rem;
+    }
+
+    header.hero {
+      display: grid;
+      gap: 1rem;
+      padding: 1.5rem 1.6rem;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: calc(var(--radius) + 2px);
+      box-shadow: var(--shadow);
+    }
+
+    .kicker {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--accent);
+      font-weight: 500;
+    }
+
+    h1 {
+      margin: 0.15rem 0 0;
+      font-size: clamp(1.6rem, 3vw, 2.15rem);
+      letter-spacing: -0.02em;
+      font-weight: 700;
+    }
+
+    .principle {
+      margin: 0;
+      color: var(--muted);
+      max-width: 62ch;
+      font-size: 0.98rem;
+    }
+
+    .principle[contenteditable="true"] {
+      outline: none;
+      border-radius: 6px;
+      padding: 0.35rem 0.45rem;
+      margin-left: -0.45rem;
+    }
+    .principle[contenteditable="true"]:focus {
+      background: #f7faf8;
+      box-shadow: inset 0 0 0 1px var(--accent);
+    }
+
+    .meta-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem 1rem;
+      align-items: center;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 0.75rem;
+      margin-top: 1.25rem;
+    }
+    @media (max-width: 720px) {
+      .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+
+    .stat {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 0.85rem 1rem;
+      box-shadow: var(--shadow);
+    }
+    .stat b {
+      display: block;
+      font-size: 1.55rem;
+      letter-spacing: -0.03em;
+      line-height: 1.1;
+    }
+    .stat span {
+      font-size: 0.78rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .toolbar {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+      align-items: center;
+      margin: 1.25rem 0 0.5rem;
+      padding: 0.75rem 0;
+      background: color-mix(in srgb, var(--bg) 88%, transparent);
+      backdrop-filter: blur(8px);
+    }
+
+    .search, select {
+      font: inherit;
+      border: 1px solid var(--line);
+      background: var(--paper);
+      border-radius: 8px;
+      padding: 0.55rem 0.75rem;
+      color: var(--text);
+    }
+    .search { flex: 1 1 220px; min-width: 180px; }
+    .search:focus, select:focus, textarea:focus, button:focus-visible {
+      outline: 2px solid color-mix(in srgb, var(--focus) 45%, white);
+      outline-offset: 1px;
+    }
+
+    .chip {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      padding: 0.2rem 0.5rem;
+      border-radius: 999px;
+      border: 1px solid transparent;
+      white-space: nowrap;
+    }
+    .chip.high, .chip.high-meta { background: var(--warn-soft); color: var(--warn); }
+    .chip.medium, .chip.medium-high { background: #e7eef5; color: #35506e; }
+    .chip.low { background: var(--hold-soft); color: var(--hold); }
+    .chip.implemented { background: var(--accent-soft); color: var(--accent); }
+    .chip.deferred, .chip.partially-implemented { background: var(--warn-soft); color: var(--warn); }
+    .chip.accepted-keep-implicit { background: var(--hold-soft); color: var(--hold); }
+
+    section.block {
+      margin-top: 1.75rem;
+    }
+    section.block > h2 {
+      margin: 0 0 0.75rem;
+      font-size: 1.05rem;
+      letter-spacing: -0.01em;
+      display: flex;
+      align-items: baseline;
+      gap: 0.55rem;
+    }
+    section.block > h2 .count {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      color: var(--muted);
+      font-weight: 500;
+    }
+
+    .cards { display: grid; gap: 0.85rem; }
+
+    details.card {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    details.card[hidden] { display: none; }
+    details.card > summary {
+      list-style: none;
+      cursor: pointer;
+      display: grid;
+      grid-template-columns: auto 1fr auto auto;
+      gap: 0.75rem 1rem;
+      align-items: start;
+      padding: 1rem 1.1rem;
+    }
+    details.card > summary::-webkit-details-marker { display: none; }
+    .chev {
+      font-family: var(--mono);
+      color: var(--muted);
+      font-size: 0.85rem;
+      padding-top: 0.15rem;
+      transition: transform 0.15s ease;
+    }
+    details.card[open] > summary .chev { transform: rotate(90deg); }
+    .id {
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: var(--accent);
+      padding-top: 0.15rem;
+    }
+    .title-wrap { min-width: 0; }
+    .title-wrap strong {
+      display: block;
+      font-size: 1rem;
+      letter-spacing: -0.01em;
+    }
+    .title-wrap .machine {
+      color: var(--muted);
+      font-size: 0.88rem;
+      margin-top: 0.15rem;
+    }
+    .badges { display: flex; flex-wrap: wrap; gap: 0.35rem; justify-content: flex-end; }
+
+    .body {
+      border-top: 1px solid var(--line);
+      padding: 1rem 1.1rem 1.15rem;
+      display: grid;
+      gap: 0.9rem;
+    }
+
+    .field label {
+      display: block;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 0.3rem;
+      font-weight: 600;
+    }
+    .field textarea, .field select {
+      width: 100%;
+      resize: vertical;
+      min-height: 2.6rem;
+      font: inherit;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 0.55rem 0.7rem;
+      background: #fff;
+    }
+    .field textarea.decision { min-height: 4.5rem; }
+    .trio {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.75rem;
+    }
+    @media (max-width: 800px) {
+      .trio { grid-template-columns: 1fr; }
+      details.card > summary { grid-template-columns: 1fr auto; }
+      .badges { justify-content: flex-start; grid-column: 1 / -1; }
+      .id { grid-column: 1; }
+    }
+
+    .list {
+      margin: 0;
+      padding-left: 1.1rem;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    .files {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      color: var(--muted);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+    }
+    .files span {
+      background: #f2efe8;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 0.15rem 0.4rem;
+    }
+
+    .approve {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.9rem;
+    }
+    .approve input { width: 1rem; height: 1rem; accent-color: var(--accent); }
+
+    .dock {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: #171a20;
+      color: #f5f2eb;
+      padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom, 0px));
+      border-top: 1px solid #2a2f38;
+      z-index: 20;
+    }
+    .dock-inner {
+      width: min(1080px, calc(100% - 2rem));
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 0.75rem 1rem;
+      align-items: center;
+    }
+    @media (max-width: 720px) {
+      .dock-inner { grid-template-columns: 1fr; }
+    }
+    .dock textarea {
+      width: 100%;
+      min-height: 2.6rem;
+      max-height: 6rem;
+      resize: vertical;
+      border: 1px solid #3a404c;
+      border-radius: 8px;
+      background: #15181e;
+      color: #f5f2eb;
+      font: inherit;
+      padding: 0.55rem 0.7rem;
+    }
+    .dock textarea::placeholder { color: #9aa1ad; }
+    .dock-actions { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+
+    button {
+      font: inherit;
+      border: 0;
+      border-radius: 8px;
+      padding: 0.65rem 1rem;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    button.primary {
+      background: #3ecf9a;
+      color: #08281e;
+    }
+    button.primary:hover { filter: brightness(1.05); }
+    button.ghost {
+      background: transparent;
+      color: #d7dde8;
+      border: 1px solid #4a5160;
+    }
+    .toast {
+      font-size: 0.82rem;
+      color: #b7c0cf;
+      min-height: 1.2em;
+    }
+    .toast.ok { color: #8fe0c0; }
+    .toast.err { color: #f0a0a0; }
+
+    .empty {
+      padding: 1.25rem;
+      border: 1px dashed var(--line);
+      border-radius: var(--radius);
+      color: var(--muted);
+      background: color-mix(in srgb, var(--paper) 70%, transparent);
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header class="hero">
+      <div>
+        <div class="kicker">SyncEngine · decision review</div>
+        <h1 id="title">State machine refinements</h1>
+      </div>
+      <p class="principle" id="principle" contenteditable="true" spellcheck="true"></p>
+      <div class="meta-row">
+        <span>Updated <span id="updated">—</span></span>
+        <span>·</span>
+        <span id="visible-count">0 shown</span>
+        <span>·</span>
+        <span>Edits stay local until Save</span>
+      </div>
+    </header>
+
+    <div class="stats" id="stats"></div>
+
+    <div class="toolbar">
+      <input class="search" id="q" type="search" placeholder="Filter by id, machine, decision…" />
+      <select id="statusFilter">
+        <option value="all">All statuses</option>
+        <option value="implemented">Implemented</option>
+        <option value="partially-implemented">Partial</option>
+        <option value="deferred">Deferred</option>
+        <option value="accepted-keep-implicit">Keep implicit</option>
+      </select>
+      <select id="priorityFilter">
+        <option value="all">All priorities</option>
+        <option value="high">High</option>
+        <option value="high-meta">High meta</option>
+        <option value="medium-high">Medium-high</option>
+        <option value="medium">Medium</option>
+        <option value="low">Low</option>
+      </select>
+    </div>
+
+    <section class="block" data-section="review">
+      <h2>Needs attention <span class="count" id="count-review"></span></h2>
+      <div class="cards" id="list-review"></div>
+    </section>
+
+    <section class="block" data-section="done">
+      <h2>Implemented <span class="count" id="count-done"></span></h2>
+      <div class="cards" id="list-done"></div>
+    </section>
+
+    <section class="block" data-section="parked">
+      <h2>Deferred / parked <span class="count" id="count-parked"></span></h2>
+      <div class="cards" id="list-parked"></div>
+    </section>
+  </div>
+
+  <div class="dock">
+    <div class="dock-inner">
+      <div>
+        <textarea id="notes" placeholder="Notes for the agent (optional) — what to do next after Save…"></textarea>
+        <div class="toast" id="toast"></div>
+      </div>
+      <div class="dock-actions">
+        <button type="button" class="ghost" id="resetBtn">Reset</button>
+        <button type="button" class="primary" id="saveBtn">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const DATA = {
+  "title": "Implicit state machine refinements",
+  "updatedUtc": "2026-11-08T19:47:00Z",
+  "guidingPrinciple": "Elevate UX, DX, and AX together without breaking wire protocol or adopter-facing APIs. Prefer additive enums/snapshots in core; thin app facades keep existing bindings.",
+  "decisions": [
+    {
+      "id": "SM-01",
+      "machine": "Client sync session lifecycle (MAUI + Blazor hosts)",
+      "priority": "high",
+      "implicitBefore": [
+        "MauiSyncBootstrapper: _started + nullable CTS + free-form status strings",
+        "AviationSyncHostedService: nullable CTS + FacilityViewSyncStatus 4-value enum",
+        "Incompatible vocabularies across hosts"
+      ],
+      "decision": "Introduce core ISyncSession + SyncSessionPhase + SyncSessionSnapshot + SyncClientSession; MAUI/Blazor become thin adapters.",
+      "ux": "One status vocabulary (Connecting/CatchingUp/Live/OfflinePolling/Reconnecting/Degraded) with stable DisplayStatus; no false 'Connected' when SignalR is disabled.",
+      "dx": "Single place to reason about host loops; AddSyncEngineClientSession for periodic-pull opt-in.",
+      "ax": "Agents edit SyncClientSession once instead of two divergent hosts; enums are greppable contracts.",
+      "breakingRisk": "low",
+      "compatibility": "MauiSyncBootstrapper keeps StatusChanged/ErrorRaised/SyncCompleted string API. Blazor FacilityViewSyncStatus expanded additively.",
+      "status": "implemented",
+      "files": [
+        "src/core/SyncEngine.Abstractions/Client/SyncSession.cs",
+        "src/core/SyncEngine.Client/SyncClientSession.cs",
+        "src/core/SyncEngine.Client/ServiceCollectionExtensions.cs",
+        "apps/Aviation.Maui/Services/MauiSyncBootstrapper.cs",
+        "apps/Aviation.Blazor/Services/AviationSyncHostedService.cs",
+        "apps/Aviation.Maui/MauiProgram.cs",
+        "apps/Aviation.Blazor/Program.cs"
+      ]
+    },
+    {
+      "id": "SM-02",
+      "machine": "SignalR hub link",
+      "priority": "high",
+      "implicitBefore": [
+        "Nullable HubConnection",
+        "WithAutomaticReconnect with no Reconnecting/Closed surfacing",
+        "Hosts assumed Connected after StartAsync even when EnableSignalR=false"
+      ],
+      "decision": "Add SyncHubLinkState + LinkState/LinkStateChanged on ISyncWakeListener; SignalR listener publishes Disabled/Connecting/Connected/Reconnecting/Failed/Disconnected; reject double-start.",
+      "ux": "UI can show Reconnecting and OfflinePolling from real hub events.",
+      "dx": "Connection state is one property, not inferred from exceptions.",
+      "ax": "Safe to extend hub lifecycle without hunting string status writes.",
+      "breakingRisk": "medium-for-custom-implementors",
+      "compatibility": "Only in-box SignalRSyncWakeListener implements ISyncWakeListener.",
+      "status": "implemented",
+      "files": [
+        "src/core/SyncEngine.Abstractions/Client/ISyncTransport.cs",
+        "src/core/SyncEngine.Client/Transport/SignalRSyncWakeListener.cs"
+      ]
+    },
+    {
+      "id": "SM-03",
+      "machine": "SyncPullService apply / catch-up phases",
+      "priority": "high",
+      "implicitBefore": [
+        "needsHttpCatchUp bool",
+        "HasMore paging loop",
+        "No public phase for gap vs stream vs HTTP"
+      ],
+      "decision": "Add SyncApplyPhase + ApplyPhaseChanged; SyncClientSession maps GapRepair/HttpCatchUp → CatchingUp and ApplyingStream → Syncing when appropriate. Do not reorder lock/catch-up semantics.",
+      "ux": "Catch-up vs live stream is visible to session consumers.",
+      "dx": "Phase names match product-contract language (gap → HTTP pull).",
+      "ax": "Agents can subscribe to phases instead of parsing logs.",
+      "breakingRisk": "low",
+      "compatibility": "Additive event only; pull ordering unchanged.",
+      "status": "implemented",
+      "files": [
+        "src/core/SyncEngine.Client/SyncPullService.cs",
+        "src/core/SyncEngine.Abstractions/Client/SyncSession.cs"
+      ]
+    },
+    {
+      "id": "SM-04",
+      "machine": "Transport mode flags",
+      "priority": "medium",
+      "implicitBefore": [
+        "EnableSignalR × EnableDeltaStreaming × EnableTelemetryReporting boolean matrix"
+      ],
+      "decision": "Add SyncTransportMode + SyncClientOptions.ResolveTransportMode(); keep booleans as configuration source of truth for now.",
+      "ux": "Session snapshot shows named mode.",
+      "dx": "Named modes document intended operating points.",
+      "ax": "Avoids agents misreading flag combinations.",
+      "breakingRisk": "none",
+      "compatibility": "Additive helper; flags retained.",
+      "status": "implemented",
+      "files": [
+        "src/core/SyncEngine.Client/SyncClientOptions.cs",
+        "src/core/SyncEngine.Abstractions/Client/SyncSession.cs"
+      ]
+    },
+    {
+      "id": "SM-05",
+      "machine": "Auth / token acquisition",
+      "priority": "medium-high",
+      "implicitBefore": [
+        "Cached token + expiry with gate",
+        "Failures looked like generic network errors",
+        "No observable credential state"
+      ],
+      "decision": "Add SyncCredentialState + optional ISyncCredentialStatus; ClientCredentialsTokenProvider publishes Unconfigured/Valid/Refreshing/Expired/Failed. Defer 401-forced refresh to a follow-up to avoid HTTP handler behavior change this pass.",
+      "ux": "Foundation to show auth failures distinctly from sync/network errors.",
+      "dx": "Credential lifecycle is typed.",
+      "ax": "Optional interface keeps NullSyncCredentialProvider untouched.",
+      "breakingRisk": "low",
+      "compatibility": "ISyncCredentialProvider unchanged; status is additive.",
+      "status": "implemented",
+      "followUp": "Wire 401 → force refresh in SyncAuthDelegatingHandler; fold Failed into SyncSessionSnapshot.Detail.",
+      "files": [
+        "src/core/SyncEngine.Abstractions/Auth/ISyncCredentialStatus.cs",
+        "src/core/SyncEngine.Client/Auth/ClientCredentialsTokenProvider.cs"
+      ]
+    },
+    {
+      "id": "SM-06",
+      "machine": "Client outbox",
+      "priority": "medium",
+      "implicitBefore": [
+        "PendingCount + flush lock",
+        "No named Empty/Pending/Flushing/Failed",
+        "Apps do not auto-flush on reconnect"
+      ],
+      "decision": "Expose SyncOutboxPhase + PhaseChanged on ClientOutbox. Defer OfflineSyncCoordinator (flush-on-reconnect) to avoid changing demo mutation paths this pass.",
+      "ux": "Outbox can drive a pending-count badge later without guessing.",
+      "dx": "Flush lifecycle is explicit.",
+      "ax": "Phase enum documents legal transitions.",
+      "breakingRisk": "low",
+      "compatibility": "Additive; FlushAsync semantics unchanged.",
+      "status": "implemented",
+      "followUp": "IOfflineSyncCoordinator: OnConnectivityRestored → Flush → Pull; generator hooks for entity writes.",
+      "files": [
+        "src/core/SyncEngine.Client/Offline/ClientOutbox.cs"
+      ]
+    },
+    {
+      "id": "SM-07",
+      "machine": "Blazor FacilityViewSyncStatus + Home refresh coalesce",
+      "priority": "medium",
+      "implicitBefore": [
+        "Initializing/Syncing/Live/Error only",
+        "_refreshing + _refreshRequested boolean pair"
+      ],
+      "decision": "Expand FacilityViewSyncStatus with CatchingUp/Offline/Reconnecting; map from SyncSessionSnapshot; extract UiRefreshCoalescer (Idle/Running/DirtyWhileRunning). MarkAppliedBatch no longer forces Live (session owns phase).",
+      "ux": "Pill reflects offline/reconnect/catch-up; offline successful polls stay Offline.",
+      "dx": "UI enum documented as projection of SyncSessionPhase.",
+      "ax": "Refresh coalescer is a named SM agents can reuse.",
+      "breakingRisk": "low",
+      "compatibility": "CSS adds offline pill; existing classes preserved.",
+      "status": "implemented",
+      "files": [
+        "apps/Aviation.Blazor/Services/FacilityViewService.cs",
+        "apps/Aviation.Blazor/Services/UiRefreshCoalescer.cs",
+        "apps/Aviation.Blazor/Components/Pages/Home.razor"
+      ]
+    },
+    {
+      "id": "SM-08",
+      "machine": "Oracle / org store transaction session",
+      "priority": "medium",
+      "implicitBefore": [
+        "HasActiveTransaction bool + nullable connection/transaction + _disposed"
+      ],
+      "decision": "Add OrgStoreSessionState (Idle/Open/TransactionOpen/Disposed); keep HasActiveTransaction as derived convenience for ChangeLedgerWriter wake deferral.",
+      "ux": "No direct UX; clearer wake timing contract for reliability.",
+      "dx": "Named states around post-commit wake.",
+      "ax": "Agents less likely to break wake-on-commit by flipping a naked bool.",
+      "breakingRisk": "low-medium",
+      "compatibility": "HasActiveTransaction retained; SessionState additive on IOrgStore (two implementors updated).",
+      "status": "implemented",
+      "files": [
+        "src/core/SyncEngine.Abstractions/Store/IOrgStore.cs",
+        "src/core/SyncEngine.Providers.Oracle/OracleOrgStore.cs",
+        "src/core/SyncEngine.Server/Store/NoOpOrgStore.cs"
+      ]
+    },
+    {
+      "id": "SM-09",
+      "machine": "LoadRunStatus",
+      "priority": "low",
+      "implicitBefore": [
+        "MarkFailed collapsed into Complete"
+      ],
+      "decision": "Add LoadRunStatus.Failed; MarkFailed sets Failed.",
+      "ux": "Telemetry/load UI can distinguish failure from success.",
+      "dx": "Enum matches reality.",
+      "ax": "No silent Complete-on-failure.",
+      "breakingRisk": "low",
+      "compatibility": "Additive enum value; ToString() API gains 'Failed'.",
+      "status": "implemented",
+      "files": [
+        "apps/Aviation.Server/Services/LoadRunService.cs"
+      ]
+    },
+    {
+      "id": "SM-10",
+      "machine": "CoalescingSyncNotifier server streamer",
+      "priority": "medium",
+      "implicitBefore": [
+        "SeedingHwm/IdleWait/Draining/CoalesceWindow/FlushingPages/OversizedWakeOnly in loop locals"
+      ],
+      "decision": "Defer control-flow rewrite. Prefer additive NotifierPhase telemetry in a follow-up to avoid latency/coalesce regressions.",
+      "ux": "No change this pass.",
+      "dx": "Documented as intentional deferral.",
+      "ax": "Avoid risky rewrite without telemetry hooks first.",
+      "breakingRisk": "medium-if-rewritten",
+      "compatibility": "Unchanged.",
+      "status": "deferred",
+      "followUp": "NotifierPhase + structured telemetry (Coalescing, StreamingPage, WakeOnly)."
+    },
+    {
+      "id": "SM-11",
+      "machine": "Generator lifecycle emission gap",
+      "priority": "high-meta",
+      "implicitBefore": [
+        "Generator emits DI/handlers only; every adopter reinvents session host"
+      ],
+      "decision": "Ship SyncClientSession in Client package (opt-in via existing AddSyncEngineClient + AddSyncEngineClientSession). Do not force-generate host runners this pass; document adopter path.",
+      "ux": "Adopters get correct status if they use ISyncSession.",
+      "dx": "One recommended host instead of copy-paste Aviation code.",
+      "ax": "Generator remains schema-focused; lifecycle lives in reusable core (easier for agents than emitted one-offs).",
+      "breakingRisk": "low",
+      "compatibility": "Opt-in; PlugAndPlay sample unchanged this pass.",
+      "status": "partially-implemented",
+      "followUp": "Update product-contract adopter snippet + PlugAndPlay host to call AddSyncEngineClientSession / ISyncSession."
+    },
+    {
+      "id": "SM-12",
+      "machine": "Checkpoint / schema bootstrap flags",
+      "priority": "low",
+      "implicitBefore": [
+        "SqliteCheckpointStore._initialized",
+        "SqliteBatchApplier._schemaReady"
+      ],
+      "decision": "Keep as one-shot init flags. Expose checkpoint on SyncSessionSnapshot via successful pull ToVersion (already done) rather than wrapping Lazy init.",
+      "ux": "Connected (vN) when checkpoint known.",
+      "dx": "Avoid over-abstracting bootstrap.",
+      "ax": "Less noise in abstractions package.",
+      "breakingRisk": "none",
+      "compatibility": "Unchanged stores.",
+      "status": "accepted-keep-implicit"
+    },
+    {
+      "id": "SM-13",
+      "machine": "SyncHub Context.Items registration",
+      "priority": "low",
+      "implicitBefore": [
+        "ConnectedUnregistered vs Registered via Context.Items"
+      ],
+      "decision": "Defer typed presence bag; telemetry already records connect/disconnect.",
+      "ux": "No change.",
+      "dx": "Low payoff vs risk.",
+      "ax": "Leave until telemetry dashboard needs presence.",
+      "breakingRisk": "low",
+      "compatibility": "Unchanged.",
+      "status": "deferred"
+    }
+  ],
+  "refinementOrderExecuted": ["SM-01","SM-02","SM-03","SM-04","SM-05","SM-06","SM-07","SM-08","SM-09","SM-12"],
+  "deferred": ["SM-10","SM-11-followUp","SM-13","SM-05-followUp-401-refresh","SM-06-followUp-offline-coordinator"]
+};
+
+    const original = structuredClone(DATA);
+    let state = structuredClone(DATA);
+    const approvals = new Set();
+
+    const $ = (id) => document.getElementById(id);
+    const toast = (msg, cls = '') => {
+      const el = $('toast');
+      el.textContent = msg;
+      el.className = 'toast' + (cls ? ' ' + cls : '');
+    };
+
+    function sectionFor(status) {
+      if (status === 'implemented' || status === 'accepted-keep-implicit') return 'done';
+      if (status === 'deferred') return 'parked';
+      return 'review';
+    }
+
+    function chipClass(value) {
+      return 'chip ' + String(value || '').toLowerCase();
+    }
+
+    function renderStats() {
+      const counts = {
+        total: state.decisions.length,
+        implemented: 0,
+        review: 0,
+        deferred: 0,
+      };
+      for (const d of state.decisions) {
+        if (d.status === 'implemented' || d.status === 'accepted-keep-implicit') counts.implemented++;
+        else if (d.status === 'deferred') counts.deferred++;
+        else counts.review++;
+      }
+      $('stats').innerHTML = [
+        ['Total', counts.total],
+        ['Implemented', counts.implemented],
+        ['Needs review', counts.review],
+        ['Deferred', counts.deferred],
+      ].map(([label, n]) => `<div class="stat"><b>${n}</b><span>${label}</span></div>`).join('');
+    }
+
+    function matchesFilters(d) {
+      const q = $('q').value.trim().toLowerCase();
+      const st = $('statusFilter').value;
+      const pr = $('priorityFilter').value;
+      if (st !== 'all' && d.status !== st) return false;
+      if (pr !== 'all' && d.priority !== pr) return false;
+      if (!q) return true;
+      const hay = [d.id, d.machine, d.decision, d.ux, d.dx, d.ax, d.followUp, d.status, d.priority]
+        .filter(Boolean).join(' ').toLowerCase();
+      return hay.includes(q);
+    }
+
+    function cardHtml(d) {
+      const approved = approvals.has(d.id);
+      const follow = d.followUp
+        ? `<div class="field">
+            <label>Follow-up</label>
+            <textarea data-id="${d.id}" data-k="followUp">${escapeHtml(d.followUp)}</textarea>
+            <label class="approve"><input type="checkbox" data-approve="${d.id}" ${approved ? 'checked' : ''}/> Approve this follow-up for the agent</label>
+          </div>`
+        : '';
+      const before = (d.implicitBefore || []).map((x) => `<li>${escapeHtml(x)}</li>`).join('');
+      const files = (d.files || []).map((f) => `<span>${escapeHtml(f)}</span>`).join('');
+      return `
+        <details class="card" data-id="${d.id}">
+          <summary>
+            <div class="id">${escapeHtml(d.id)}</div>
+            <div class="title-wrap">
+              <strong>${escapeHtml(d.machine)}</strong>
+              <div class="machine">${escapeHtml(truncate(d.decision, 110))}</div>
+            </div>
+            <div class="badges">
+              <span class="${chipClass(d.priority)}">${escapeHtml(d.priority)}</span>
+              <span class="${chipClass(d.status)}">${escapeHtml(d.status)}</span>
+            </div>
+            <div class="chev" aria-hidden="true">›</div>
+          </summary>
+          <div class="body">
+            <div class="field">
+              <label>Before (implicit)</label>
+              <ul class="list">${before || '<li>—</li>'}</ul>
+            </div>
+            <div class="field">
+              <label>Decision</label>
+              <textarea class="decision" data-id="${d.id}" data-k="decision">${escapeHtml(d.decision)}</textarea>
+            </div>
+            <div class="trio">
+              <div class="field"><label>UX</label><textarea data-id="${d.id}" data-k="ux">${escapeHtml(d.ux || '')}</textarea></div>
+              <div class="field"><label>DX</label><textarea data-id="${d.id}" data-k="dx">${escapeHtml(d.dx || '')}</textarea></div>
+              <div class="field"><label>AX</label><textarea data-id="${d.id}" data-k="ax">${escapeHtml(d.ax || '')}</textarea></div>
+            </div>
+            <div class="trio">
+              <div class="field">
+                <label>Status</label>
+                <select data-id="${d.id}" data-k="status">
+                  ${statusOptions(d.status)}
+                </select>
+              </div>
+              <div class="field">
+                <label>Priority</label>
+                <select data-id="${d.id}" data-k="priority">
+                  ${priorityOptions(d.priority)}
+                </select>
+              </div>
+              <div class="field">
+                <label>Breaking risk</label>
+                <textarea data-id="${d.id}" data-k="breakingRisk">${escapeHtml(d.breakingRisk || '')}</textarea>
+              </div>
+            </div>
+            ${follow}
+            <div class="field">
+              <label>Compatibility</label>
+              <textarea data-id="${d.id}" data-k="compatibility">${escapeHtml(d.compatibility || '')}</textarea>
+            </div>
+            ${files ? `<div class="field"><label>Files</label><div class="files">${files}</div></div>` : ''}
+          </div>
+        </details>`;
+    }
+
+    function statusOptions(current) {
+      return ['implemented','partially-implemented','deferred','accepted-keep-implicit']
+        .map((s) => `<option value="${s}" ${s === current ? 'selected' : ''}>${s}</option>`).join('');
+    }
+    function priorityOptions(current) {
+      return ['high','high-meta','medium-high','medium','low']
+        .map((s) => `<option value="${s}" ${s === current ? 'selected' : ''}>${s}</option>`).join('');
+    }
+
+    function render() {
+      $('title').textContent = state.title;
+      $('principle').textContent = state.guidingPrinciple;
+      $('updated').textContent = formatStamp(state.updatedUtc);
+
+      const buckets = { review: [], done: [], parked: [] };
+      let visible = 0;
+      for (const d of state.decisions) {
+        if (!matchesFilters(d)) continue;
+        visible++;
+        buckets[sectionFor(d.status)].push(d);
+      }
+      $('visible-count').textContent = visible + ' shown';
+
+      for (const key of ['review', 'done', 'parked']) {
+        const host = $('list-' + key);
+        const section = host.closest('section.block');
+        const items = buckets[key];
+        $('count-' + key).textContent = items.length ? `(${items.length})` : '';
+        if (!items.length) {
+          section.hidden = true;
+          host.innerHTML = '';
+          continue;
+        }
+        section.hidden = false;
+        host.innerHTML = items.map(cardHtml).join('');
+      }
+      renderStats();
+      bindEditors();
+    }
+
+    function bindEditors() {
+      document.querySelectorAll('[data-id][data-k]').forEach((el) => {
+        el.addEventListener('input', () => {
+          const d = state.decisions.find((x) => x.id === el.dataset.id);
+          if (!d) return;
+          d[el.dataset.k] = el.value;
+          if (el.dataset.k === 'status' || el.dataset.k === 'priority') {
+            // Re-bucket without losing open state for other cards — simple re-render.
+            const openIds = [...document.querySelectorAll('details.card[open]')].map((n) => n.dataset.id);
+            render();
+            openIds.forEach((id) => {
+              const card = document.querySelector(`details.card[data-id="${id}"]`);
+              if (card) card.open = true;
+            });
+          } else if (el.dataset.k === 'decision') {
+            const summary = el.closest('details')?.querySelector('.machine');
+            if (summary) summary.textContent = truncate(el.value, 110);
+          }
+          toast('Unsaved edits');
+        });
+      });
+      document.querySelectorAll('[data-approve]').forEach((el) => {
+        el.addEventListener('change', () => {
+          if (el.checked) approvals.add(el.dataset.approve);
+          else approvals.delete(el.dataset.approve);
+        });
+      });
+    }
+
+    function collectDocument() {
+      state.guidingPrinciple = $('principle').textContent.trim();
+      state.updatedUtc = new Date().toISOString();
+      state.deferred = state.decisions
+        .filter((d) => d.status === 'deferred' || d.status === 'partially-implemented')
+        .map((d) => d.id);
+      return structuredClone(state);
+    }
+
+    function download(filename, obj) {
+      const blob = new Blob([JSON.stringify(obj, null, 2) + '\n'], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+
+    $('saveBtn').addEventListener('click', () => {
+      const documentOut = collectDocument();
+      const inbox = {
+        savedAtUtc: new Date().toISOString(),
+        source: 'state-machine-review.html',
+        notes: $('notes').value.trim(),
+        approvedFollowUps: [...approvals],
+        document: documentOut,
+      };
+      download('review-inbox.json', inbox);
+      toast('Downloaded review-inbox.json — move it into decisions/ to ping the agent.', 'ok');
+    });
+
+    $('resetBtn').addEventListener('click', () => {
+      state = structuredClone(original);
+      approvals.clear();
+      $('notes').value = '';
+      render();
+      toast('Reset to embedded snapshot');
+    });
+
+    $('principle').addEventListener('input', () => toast('Unsaved edits'));
+    ['q', 'statusFilter', 'priorityFilter'].forEach((id) => {
+      $(id).addEventListener('input', render);
+      $(id).addEventListener('change', render);
+    });
+
+    function escapeHtml(s) {
+      return String(s)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;');
+    }
+    function truncate(s, n) {
+      s = String(s || '');
+      return s.length > n ? s.slice(0, n - 1) + '…' : s;
+    }
+    function formatStamp(iso) {
+      try {
+        return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+      } catch {
+        return iso;
+      }
+    }
+
+    render();
+  </script>
+</body>
+</html>
