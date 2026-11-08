@@ -4,8 +4,8 @@ public sealed class OracleOptions
 {
     public const string SectionName = "SyncEngine:Oracle";
 
-    public string ConnectionString { get; set; } =
-        "User Id=nas_sim;Password=NasSim_Dev1;Data Source=localhost:1522/FREEPDB1";
+    /// <summary>Required. Set via configuration / environment — no compiled default password.</summary>
+    public string ConnectionString { get; set; } = string.Empty;
 
     public string Schema { get; set; } = "NAS_SIM";
 }

@@ -29,6 +29,8 @@ public sealed class SyncTelemetryStats
 
     public long DeltaPullCount { get; init; }
 
+    public long DeltaStreamCount { get; init; }
+
     public long ClientApplyCount { get; init; }
 
     public double? AvgDeltaLatencyMs { get; init; }
@@ -51,6 +53,7 @@ public sealed class SyncTelemetryStore(
     private long _writes;
     private long _wakes;
     private long _pulls;
+    private long _streams;
     private long _applies;
     private double _deltaLatencySum;
     private long _deltaLatencyCount;
@@ -96,6 +99,14 @@ public sealed class SyncTelemetryStore(
                 }
 
                 break;
+            case SyncTelemetryKind.DeltaStream:
+                Interlocked.Increment(ref _streams);
+                if (telemetryEvent.Bytes is > 0)
+                {
+                    Interlocked.Add(ref _bytesOut, telemetryEvent.Bytes.Value);
+                }
+
+                break;
             case SyncTelemetryKind.OfflinePush:
                 if (telemetryEvent.Bytes is > 0)
                 {
@@ -138,10 +149,17 @@ public sealed class SyncTelemetryStore(
             // Listener resolution must not break callers (hub register, wakes, writes).
         }
 
+        // Best-effort fan-out: observe the Task so faults never become UnobservedTaskException.
+        _ = FanOutTelemetryAsync(hubContext, telemetryEvent);
+    }
+
+    private static async Task FanOutTelemetryAsync(IHubContext<TelemetryHub> hubContext, SyncTelemetryEvent telemetryEvent)
+    {
         try
         {
-            _ = hubContext.Clients.Group(TelemetryHub.ViewersGroup)
-                .SendAsync("TelemetryEvent", telemetryEvent);
+            await hubContext.Clients.Group(TelemetryHub.ViewersGroup)
+                .SendAsync("TelemetryEvent", telemetryEvent)
+                .ConfigureAwait(false);
         }
         catch
         {
@@ -167,6 +185,7 @@ public sealed class SyncTelemetryStore(
                 WriteCount = Interlocked.Read(ref _writes),
                 WakeCount = Interlocked.Read(ref _wakes),
                 DeltaPullCount = Interlocked.Read(ref _pulls),
+                DeltaStreamCount = Interlocked.Read(ref _streams),
                 ClientApplyCount = Interlocked.Read(ref _applies),
                 AvgDeltaLatencyMs = _deltaLatencyCount == 0 ? null : _deltaLatencySum / _deltaLatencyCount,
                 AvgApplyLatencyMs = _applyLatencyCount == 0 ? null : _applyLatencySum / _applyLatencyCount,

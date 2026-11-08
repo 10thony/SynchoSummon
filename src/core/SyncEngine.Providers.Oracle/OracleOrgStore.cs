@@ -21,7 +21,27 @@ public sealed class OracleOrgStore : IOrgStore
         _options = options.Value;
     }
 
-    public bool HasActiveTransaction => _transaction is not null;
+    public bool HasActiveTransaction => SessionState == OrgStoreSessionState.TransactionOpen;
+
+    public OrgStoreSessionState SessionState
+    {
+        get
+        {
+            if (_disposed)
+            {
+                return OrgStoreSessionState.Disposed;
+            }
+
+            if (_transaction is not null)
+            {
+                return OrgStoreSessionState.TransactionOpen;
+            }
+
+            return _connection is { State: ConnectionState.Open }
+                ? OrgStoreSessionState.Open
+                : OrgStoreSessionState.Idle;
+        }
+    }
 
     public async Task EnsureLedgerAsync(CancellationToken cancellationToken = default)
     {

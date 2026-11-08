@@ -1,6 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using SyncEngine.Abstractions.Client;
+using SyncEngine.Abstractions.Auth;
 using SyncEngine.Abstractions.Codec;
 using SyncEngine.Abstractions.Notify;
 using SyncEngine.Abstractions.Store;
@@ -18,7 +18,8 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddSyncEngineServer(this IServiceCollection services)
     {
         services.AddSingleton<IDeltaCodec, MemoryPackDeltaCodec>();
-        services.AddSingleton<ISyncAuthorization, AllowAllSyncAuthorization>();
+        services.TryAddSingleton<ISyncAuthenticator, AnonymousSyncAuthenticator>();
+        services.TryAddSingleton<ISyncAuthorization, UnsafeAllowAllSyncAuthorization>();
         services.TryAddSingleton<IOrgStore, NoOpOrgStore>();
         services.AddSingleton<ISyncTelemetry, SyncTelemetryStore>();
         services.AddSingleton<CoalescingSyncNotifier>();
@@ -26,13 +27,26 @@ public static class ServiceCollectionExtensions
         services.AddHostedService(sp => sp.GetRequiredService<CoalescingSyncNotifier>());
         services.AddSingleton<ChangeLedgerWriter>();
         services.AddSingleton<IOfflineEntityApplicator, NoOpOfflineEntityApplicator>();
+        services.TryAddSingleton(SyncPushLimits.Default);
         services.AddSingleton<OfflinePushHandler>();
-        services.AddSignalR();
+        // Phone-scale SyncDelta pages can exceed SignalR's 32KB default.
+        services.AddSignalR(options =>
+        {
+            options.MaximumReceiveMessageSize = 64 * 1024 * 1024;
+            options.EnableDetailedErrors = false;
+        });
         return services;
     }
-}
 
-public sealed class AllowAllSyncAuthorization : ISyncAuthorization
-{
-    public bool CanReadChange(string entityName) => true;
+    /// <summary>
+    /// Explicit lab opt-in: anonymous HTTP access and allow-all entity authZ.
+    /// Do not use for production-shaped hosts.
+    /// </summary>
+    public static IServiceCollection AddSyncEngineAnonymousAccess(this IServiceCollection services)
+    {
+        services.RemoveAll<SyncAuthFeature>();
+        services.AddSingleton<ISyncAuthenticator, AnonymousSyncAuthenticator>();
+        services.AddSingleton<ISyncAuthorization, UnsafeAllowAllSyncAuthorization>();
+        return services;
+    }
 }

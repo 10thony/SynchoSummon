@@ -5,7 +5,7 @@ using SyncEngine.Abstractions.Store;
 namespace SyncEngine.Providers.Oracle;
 
 /// <summary>
-/// Lightweight Oracle schema reader — foundation for SyncEngine.Generator.
+/// Oracle schema reader — populates the SyncEngine generator IR.
 /// </summary>
 public sealed class OracleSchemaReader(IOrgStore store, IOptions<OracleOptions> options) : ISchemaReader
 {
@@ -30,7 +30,7 @@ public sealed class OracleSchemaReader(IOrgStore store, IOptions<OracleOptions> 
         {
             var columns = await store.QueryAsync<ColumnRow>(
                 """
-                SELECT column_name AS ColumnName, data_type AS DataType
+                SELECT column_name AS ColumnName, data_type AS DataType, nullable AS Nullable
                 FROM all_tab_columns
                 WHERE owner = :owner AND table_name = :tableName
                 ORDER BY column_id
@@ -44,7 +44,7 @@ public sealed class OracleSchemaReader(IOrgStore store, IOptions<OracleOptions> 
 
             var keys = await store.QueryAsync<ColumnRow>(
                 """
-                SELECT acc.column_name AS ColumnName, 'KEY' AS DataType
+                SELECT acc.column_name AS ColumnName, 'KEY' AS DataType, 'N' AS Nullable
                 FROM all_constraints ac
                 JOIN all_cons_columns acc
                   ON ac.owner = acc.owner
@@ -61,11 +61,30 @@ public sealed class OracleSchemaReader(IOrgStore store, IOptions<OracleOptions> 
                 },
                 cancellationToken);
 
+            var fks = await store.QueryAsync<FkRow>(
+                """
+                SELECT DISTINCT c_pk.table_name AS ReferencedTable
+                FROM all_constraints c
+                JOIN all_constraints c_pk
+                  ON c.r_owner = c_pk.owner
+                 AND c.r_constraint_name = c_pk.constraint_name
+                WHERE c.owner = :owner
+                  AND c.table_name = :tableName
+                  AND c.constraint_type = 'R'
+                """,
+                new Dictionary<string, object?>
+                {
+                    ["owner"] = schema,
+                    ["tableName"] = table.TableName,
+                },
+                cancellationToken);
+
             var keySet = keys.Select(k => k.ColumnName).ToHashSet(StringComparer.OrdinalIgnoreCase);
             entities.Add(new EntityDescriptor
             {
                 EntityName = ToPascal(table.TableName),
                 TableName = table.TableName,
+                SchemaName = schema,
                 KeyColumns = keys.Select(k => k.ColumnName).ToArray(),
                 Properties = columns.Select(c => new SyncPropertyDescriptor
                 {
@@ -74,12 +93,14 @@ public sealed class OracleSchemaReader(IOrgStore store, IOptions<OracleOptions> 
                     ClrType = MapType(c.DataType),
                     IsKey = keySet.Contains(c.ColumnName),
                     IsPayload = true,
+                    IsNullable = string.Equals(c.Nullable, "Y", StringComparison.OrdinalIgnoreCase),
                 }).ToArray(),
                 Syncable = true,
+                ReferencedTables = fks.Select(f => f.ReferencedTable).ToArray(),
             });
         }
 
-        return entities;
+        return SchemaFilter.OrderByDependencies(entities);
     }
 
     private static Type MapType(string oracleType) => oracleType.ToUpperInvariant() switch
@@ -110,5 +131,12 @@ public sealed class OracleSchemaReader(IOrgStore store, IOptions<OracleOptions> 
         public string ColumnName { get; set; } = string.Empty;
 
         public string DataType { get; set; } = string.Empty;
+
+        public string Nullable { get; set; } = "Y";
+    }
+
+    private sealed class FkRow
+    {
+        public string ReferencedTable { get; set; } = string.Empty;
     }
 }

@@ -1,22 +1,36 @@
 using Microsoft.AspNetCore.SignalR;
+using SyncEngine.Abstractions.Auth;
 using SyncEngine.Abstractions.Telemetry;
 using SyncEngine.Server.Telemetry;
 
 namespace SyncEngine.Server.Hubs;
 
-public sealed class SyncHub(ISyncTelemetry telemetry) : Hub
+public sealed class SyncHub(ISyncTelemetry telemetry, ISyncAuthenticator authenticator) : Hub
 {
     public const string SyncClientsGroup = "sync-clients";
 
+    public static string TenantGroup(string tenantId) => $"sync-clients:{tenantId}";
+
     /// <summary>
-    /// SignalR does not support optional parameters or overloads — always pass a client id
-    /// (connection id is fine if the caller has nothing better).
+    /// Registers the connection into the sync wake group. Client id comes from the
+    /// authenticated principal when present; the parameter is ignored for identity.
     /// </summary>
     public async Task RegisterSyncClient(string clientId)
     {
-        var id = string.IsNullOrWhiteSpace(clientId) ? Context.ConnectionId : clientId;
+        var principal = authenticator.GetPrincipal(Context.User);
+        var id = principal.IsAuthenticated
+            ? principal.ClientId
+            : string.IsNullOrWhiteSpace(clientId) ? Context.ConnectionId : clientId;
+
         Context.Items["clientId"] = id;
+        Context.Items["tenantId"] = principal.TenantId;
+
         await Groups.AddToGroupAsync(Context.ConnectionId, SyncClientsGroup);
+        if (!string.IsNullOrWhiteSpace(principal.TenantId))
+        {
+            await Groups.AddToGroupAsync(Context.ConnectionId, TenantGroup(principal.TenantId));
+        }
+
         try
         {
             telemetry.Record(new SyncTelemetryEvent

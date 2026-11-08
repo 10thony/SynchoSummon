@@ -6,6 +6,8 @@ public sealed class NoOpOrgStore : IOrgStore
 {
     public bool HasActiveTransaction => false;
 
+    public OrgStoreSessionState SessionState => OrgStoreSessionState.Idle;
+
     public Task EnsureLedgerAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
     public Task<IOrgTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
