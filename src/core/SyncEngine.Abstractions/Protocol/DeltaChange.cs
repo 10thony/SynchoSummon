@@ -16,4 +16,7 @@ public partial struct DeltaChange
 
     /// <summary>MemoryPack-encoded payload; null for deletes.</summary>
     public byte[]? PayloadBytes { get; set; }
+
+    /// <summary>Optional tenant scope assigned by the server (additive wire field).</summary>
+    public string? TenantId { get; set; }
 }

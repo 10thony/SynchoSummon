@@ -9,6 +9,7 @@ public enum SyncTelemetryKind
     ClientApply = 5,
     ClientConnected = 6,
     ClientDisconnected = 7,
+    DeltaStream = 8,
 }
 
 public sealed class SyncTelemetryEvent

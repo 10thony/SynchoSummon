@@ -20,8 +20,3 @@ public interface ICheckpointStore
 
     Task SetVersionAsync(long version, string scope = "default", CancellationToken cancellationToken = default);
 }
-
-public interface ISyncAuthorization
-{
-    bool CanReadChange(string entityName);
-}
