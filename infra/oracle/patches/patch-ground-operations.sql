@@ -1,5 +1,5 @@
 -- Apply ground operations schema to an existing nas_sim database.
--- Run: docker exec -i dio-oracle sqlplus -s nas_sim/NasSim_Dev1@//localhost:1521/FREEPDB1 @/path/to/patch-ground-operations.sql
+-- Run: docker exec -i syncengine-oracle sqlplus -s nas_sim/<ORACLE_APP_PASSWORD>@//localhost:1522/FREEPDB1 @/path/to/patch-ground-operations.sql
 
 ALTER SESSION SET CONTAINER = FREEPDB1;
 ALTER SESSION SET CURRENT_SCHEMA = nas_sim;

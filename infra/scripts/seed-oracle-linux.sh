@@ -4,9 +4,35 @@
 # Also creates missing tables (facility_staff_assignment, entra_group_role_mapping).
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+INFRA_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ORACLE_CONTAINER="${ORACLE_CONTAINER:-syncengine-oracle}"
-SCHEMA_USER="${SCHEMA_USER:-nas_sim/NasSim_Dev1@FREEPDB1}"
+
+# Standalone repo root (= this folder) or SyncEngine checkout with infra/ nested.
+if [[ -d "$INFRA_ROOT/oracle/init" ]]; then
+  ORACLE_DIR="$INFRA_ROOT/oracle"
+elif [[ -d "$INFRA_ROOT/infra/oracle/init" ]]; then
+  INFRA_ROOT="$INFRA_ROOT/infra"
+  ORACLE_DIR="$INFRA_ROOT/oracle"
+else
+  echo "Cannot find oracle/init under $INFRA_ROOT" >&2
+  exit 1
+fi
+
+# Prefer SCHEMA_USER, else build from .env (never commit a real password default).
+if [[ -z "${SCHEMA_USER:-}" ]]; then
+  ENV_FILE="${INFRA_ROOT}/.env"
+  if [[ -f "$ENV_FILE" ]]; then
+    # shellcheck disable=SC1090
+    set -a; source "$ENV_FILE"; set +a
+  fi
+  APP_USER="${ORACLE_APP_USER:-nas_sim}"
+  APP_PASSWORD="${ORACLE_APP_PASSWORD:-}"
+  if [[ -z "$APP_PASSWORD" || "$APP_PASSWORD" == "CHANGEME" ]]; then
+    echo "Set SCHEMA_USER or ORACLE_APP_PASSWORD in ${INFRA_ROOT}/.env" >&2
+    exit 1
+  fi
+  SCHEMA_USER="${APP_USER}/${APP_PASSWORD}@FREEPDB1"
+fi
 
 run_sql() {
   local file="$1"
@@ -22,9 +48,7 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
   sleep 10
 done
 
-ORACLE_DIR="$REPO_ROOT/infra/oracle"
-
-run_sql "$ORACLE_DIR/patch-entra-group-role-mapping.sql"
+run_sql "$ORACLE_DIR/patches/patch-entra-group-role-mapping.sql"
 
 # Create facility_staff_assignment if missing (02c fails on fresh init due to FK order)
 docker exec -i "$ORACLE_CONTAINER" sqlplus -s "$SCHEMA_USER" <<'SQL' 2>&1 | tail -5
@@ -97,5 +121,5 @@ done
 
 echo ""
 echo "Seed complete. Verify:"
-echo "  curl http://cobec-spark:5000/api/operations/readiness"
-echo "  docker exec -i $ORACLE_CONTAINER sqlplus -s $SCHEMA_USER < $ORACLE_DIR/verify-seed-counts.sql"
+echo "  ./scripts/verify.ps1"
+echo "  docker exec -i $ORACLE_CONTAINER sqlplus -s \"\$SCHEMA_USER\" < $ORACLE_DIR/verify/verify-seed-counts.sql"
