@@ -14,7 +14,7 @@ using SyncEngine.Abstractions.Client;
 using SyncEngine.Abstractions.Codec;
 using SyncEngine.Abstractions.Protocol;
 using SyncEngine.Client;
-using SyncEngine.Client.Codec;
+using SyncEngine.Abstractions.Codec;
 using SyncEngine.Client.Offline;
 using SyncEngine.Client.Sqlite;
 using SyncEngine.Client.Transport;

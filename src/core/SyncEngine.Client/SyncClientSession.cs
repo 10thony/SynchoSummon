@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SyncEngine.Abstractions.Client;
 using SyncEngine.Abstractions.Protocol;
+using SyncEngine.Client.Offline;
 
 namespace SyncEngine.Client;
 
@@ -38,18 +39,22 @@ public sealed class SyncClientSession : ISyncSession
     private SyncSessionSnapshot _snapshot;
     private bool _hubFailed;
 
+    private readonly ClientOutbox? _outbox;
+
     public SyncClientSession(
         SyncPullService pullService,
         ISyncWakeListener wakeListener,
         IOptions<SyncClientOptions> clientOptions,
         IOptions<SyncClientSessionOptions> sessionOptions,
-        ILogger<SyncClientSession> logger)
+        ILogger<SyncClientSession> logger,
+        ClientOutbox? outbox = null)
     {
         _pullService = pullService;
         _wakeListener = wakeListener;
         _clientOptions = clientOptions.Value;
         _sessionOptions = sessionOptions.Value;
         _logger = logger;
+        _outbox = outbox;
         _snapshot = SyncSessionDisplay.Create(
             SyncSessionPhase.Stopped,
             wakeListener.LinkState,
@@ -219,6 +224,12 @@ public sealed class SyncClientSession : ISyncSession
             }, cancellationToken);
         }
 
+        // When the hub fails to start (or automatic reconnect gives up), HTTP polling alone
+        // leaves the session stuck in OfflinePolling forever. Retry SignalR until it sticks.
+        var hubRecoveryLoop = Task.Run(
+            () => RunHubRecoveryAsync(interval ?? TimeSpan.FromSeconds(5), cancellationToken),
+            cancellationToken);
+
         _logger.LogInformation(
             "Sync client session started (transport={Mode}, periodicPull={Periodic}).",
             _clientOptions.ResolveTransportMode(),
@@ -226,11 +237,60 @@ public sealed class SyncClientSession : ISyncSession
 
         if (periodicLoop is null)
         {
-            await Task.WhenAll(streamLoop, wakeLoop).ConfigureAwait(false);
+            await Task.WhenAll(streamLoop, wakeLoop, hubRecoveryLoop).ConfigureAwait(false);
         }
         else
         {
-            await Task.WhenAll(streamLoop, wakeLoop, periodicLoop).ConfigureAwait(false);
+            await Task.WhenAll(streamLoop, wakeLoop, periodicLoop, hubRecoveryLoop).ConfigureAwait(false);
+        }
+    }
+
+    private async Task RunHubRecoveryAsync(TimeSpan retryInterval, CancellationToken cancellationToken)
+    {
+        if (!_clientOptions.EnableSignalR)
+        {
+            return;
+        }
+
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                await Task.Delay(retryInterval, cancellationToken).ConfigureAwait(false);
+
+                var link = _wakeListener.LinkState;
+                if (link is SyncHubLinkState.Connected or SyncHubLinkState.Connecting
+                    or SyncHubLinkState.Reconnecting or SyncHubLinkState.Disabled)
+                {
+                    continue;
+                }
+
+                // Failed / Disconnected — attempt a full reconnect (dispose + StartAsync).
+                _logger.LogInformation(
+                    "SignalR hub is {Link}; attempting reconnect to recover from OfflinePolling.",
+                    link);
+                try
+                {
+                    await _wakeListener.ReconnectAsync(cancellationToken).ConfigureAwait(false);
+                    _hubFailed = false;
+                    Publish(SyncSessionPhase.CatchingUp, hub: _wakeListener.LinkState, lastError: null);
+                    RaiseError(null);
+                    await SafePullAsync(SyncSessionPhase.CatchingUp, cancellationToken).ConfigureAwait(false);
+                    _logger.LogInformation("SignalR hub recovered; session catching up.");
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    _hubFailed = true;
+                    _logger.LogDebug(ex, "SignalR hub reconnect attempt failed; will retry.");
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
         }
     }
 
@@ -406,7 +466,13 @@ public sealed class SyncClientSession : ISyncSession
                 checkpoint ?? _snapshot.Checkpoint,
                 detail,
                 resolvedError,
-                lastSuccessUtc ?? _snapshot.LastSuccessUtc);
+                lastSuccessUtc ?? _snapshot.LastSuccessUtc,
+                outboxPhase: _outbox?.Phase,
+                outboxPendingCount: _outbox?.PendingCount,
+                catchUpAppliedCount: _pullService.CatchUpAppliedCount,
+                lastStreamApplyUtc: _pullService.LastStreamApplyUtc,
+                channelWakeDropCount: _pullService.WakeDropCount,
+                channelDeltaDropCount: _pullService.DeltaDropCount);
 
             if (SnapshotsEqual(_snapshot, next))
             {
@@ -434,7 +500,13 @@ public sealed class SyncClientSession : ISyncSession
            && string.Equals(a.DisplayStatus, b.DisplayStatus, StringComparison.Ordinal)
            && string.Equals(a.Detail, b.Detail, StringComparison.Ordinal)
            && ReferenceEquals(a.LastError, b.LastError)
-           && a.LastSuccessUtc == b.LastSuccessUtc;
+           && a.LastSuccessUtc == b.LastSuccessUtc
+           && a.OutboxPhase == b.OutboxPhase
+           && a.OutboxPendingCount == b.OutboxPendingCount
+           && a.CatchUpAppliedCount == b.CatchUpAppliedCount
+           && a.LastStreamApplyUtc == b.LastStreamApplyUtc
+           && a.ChannelWakeDropCount == b.ChannelWakeDropCount
+           && a.ChannelDeltaDropCount == b.ChannelDeltaDropCount;
 
     private void RaiseError(Exception? ex)
     {

@@ -40,6 +40,7 @@ public sealed class SyncTelemetryStats
     public double? AvgWakeToApplyMs { get; init; }
 }
 
+[System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
 public sealed class SyncTelemetryStore(
     IHubContext<TelemetryHub> hubContext,
     IServiceProvider services) : ISyncTelemetry

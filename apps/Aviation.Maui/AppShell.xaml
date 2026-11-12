@@ -7,9 +7,21 @@
     Shell.FlyoutBehavior="Disabled"
     Title="Aviation Sync">
 
-    <ShellContent
-        Title="Facilities"
-        ContentTemplate="{DataTemplate local:MainPage}"
-        Route="MainPage" />
+    <TabBar>
+        <ShellContent
+            Title="Facilities"
+            ContentTemplate="{DataTemplate local:MainPage}"
+            Route="MainPage" />
+
+        <ShellContent
+            Title="Equipment"
+            ContentTemplate="{DataTemplate local:EquipmentPage}"
+            Route="EquipmentPage" />
+
+        <ShellContent
+            Title="Logs"
+            ContentTemplate="{DataTemplate local:MaintenanceLogPage}"
+            Route="MaintenanceLogPage" />
+    </TabBar>
 
 </Shell>

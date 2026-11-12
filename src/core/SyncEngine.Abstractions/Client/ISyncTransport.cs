@@ -27,4 +27,11 @@ public interface ISyncWakeListener : IAsyncDisposable
     event Action<SyncHubLinkState>? LinkStateChanged;
 
     Task StartAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Tear down any existing hub connection and start fresh.
+    /// Used when the initial connect failed or automatic reconnect gave up,
+    /// so the session can recover once the server is reachable again.
+    /// </summary>
+    Task ReconnectAsync(CancellationToken cancellationToken = default);
 }

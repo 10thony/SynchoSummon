@@ -1,13 +1,12 @@
 using PlugAndPlay.Generated.Client;
 using PlugAndPlay.Generated.Server;
-using SyncEngine.Abstractions.Ledger;
 using SyncEngine.Auth;
 using SyncEngine.Client;
 using SyncEngine.Server.Hosting;
-using SyncEngine.Server.Ledger;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Server — InMemoryChangeLedger is auto-registered by AddSyncEngineServer (TryAdd).
 builder.Services.AddSyncEngineServer();
 builder.Services.AddSyncEngineAuth(o =>
 {
@@ -20,11 +19,9 @@ builder.Services.AddSyncEngineDevClients(clients =>
 {
     clients.Add("sample-dev", "sample-dev-secret", "demo");
 });
-
-builder.Services.AddSingleton<InMemoryChangeLedger>();
-builder.Services.AddSingleton<IChangeLedger>(sp => sp.GetRequiredService<InMemoryChangeLedger>());
 builder.Services.AddGeneratedSyncServer();
 
+// Client — builder pattern wires session + credentials.
 builder.Services.AddSyncEngineClient(options =>
 {
     options.ServerBaseAddress = builder.Configuration["SyncEngine:ServerBaseAddress"] ?? "http://localhost:5090";
@@ -32,13 +29,13 @@ builder.Services.AddSyncEngineClient(options =>
     options.EnableSignalR = true;
     options.EnableDeltaStreaming = true;
     options.AllowInsecureHttp = true;
-});
-builder.Services.AddSyncEngineClientSession(runAsHostedService: true);
-builder.Services.AddSyncEngineClientCredentials(o =>
-{
-    o.ClientId = "sample-dev";
-    o.ClientSecret = "sample-dev-secret";
-});
+})
+    .WithSession(runAsHostedService: true)
+    .WithCredentials(o =>
+    {
+        o.ClientId = "sample-dev";
+        o.ClientSecret = "sample-dev-secret";
+    });
 builder.Services.AddGeneratedSyncClient();
 
 var app = builder.Build();

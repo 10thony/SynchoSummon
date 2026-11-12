@@ -1,6 +1,7 @@
 using Aviation.Blazor.Components;
 using Aviation.Blazor.Services;
 using Aviation.Shared.Entities;
+using SyncEngine.Abstractions.Auth;
 using SyncEngine.Abstractions.Client;
 using SyncEngine.Client;
 
@@ -17,7 +18,8 @@ builder.Services.AddRazorComponents()
     });
 
 builder.Services.AddHttpClient();
-builder.Services.AddSyncEngineClient(options =>
+
+var syncClient = builder.Services.AddSyncEngineClient(options =>
 {
     options.ServerBaseAddress = builder.Configuration["SyncEngine:ServerBaseAddress"] ?? "http://localhost:5080";
     options.ClientId = "blazor-dev";
@@ -25,19 +27,27 @@ builder.Services.AddSyncEngineClient(options =>
     options.EnableTelemetryReporting = true;
     options.AllowInsecureHttp = true; // local demo only
 });
-builder.Services.AddSyncEngineClientSession(); // shared session SM; no periodic pull (SignalR + wake)
-builder.Services.AddSyncEngineClientCredentials(o =>
+
+syncClient.AddSyncEntity<Facility>();
+syncClient.AddSyncEntity<Equipment>();
+syncClient.AddSyncEntity<MaintenanceLog>();
+
+syncClient.WithSession(o =>
+{
+    o.PeriodicPullInterval = TimeSpan.FromSeconds(15);
+});
+
+syncClient.WithCredentials(o =>
 {
     o.ClientId = builder.Configuration["SyncEngine:ClientCredentials:ClientId"] ?? "blazor-dev";
     o.ClientSecret = builder.Configuration["SyncEngine:ClientCredentials:ClientSecret"] ?? "blazor-dev-secret";
 });
 
-foreach (var entity in AviationEntityNames.All)
-{
-    var name = entity;
-    builder.Services.AddSingleton<IEntityDeltaHandler>(sp =>
-        new InMemoryEntityDeltaHandler(name, sp.GetRequiredService<InMemoryEntityStore>()));
-}
+syncClient.WithAutoFlush();
+
+builder.Services.AddSingleton<ISyncCredentialStatus>(sp =>
+    sp.GetRequiredService<ISyncCredentialProvider>() as ISyncCredentialStatus
+    ?? throw new InvalidOperationException("Credential provider does not implement ISyncCredentialStatus"));
 
 builder.Services.AddSingleton<AviationSyncHostedService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<AviationSyncHostedService>());

@@ -146,12 +146,12 @@ public sealed class SyncCodeEmitter
         sb.AppendLine($"using {RootNamespace};");
         sb.AppendLine($"using {RootNamespace}.Models;");
         sb.AppendLine("using SyncEngine.Abstractions.Codec;");
-        sb.AppendLine("using SyncEngine.Server.Ledger;");
+        sb.AppendLine("using SyncEngine.Abstractions.Ledger;");
         sb.AppendLine();
         sb.AppendLine($"namespace {RootNamespace}.Server;");
         sb.AppendLine();
         sb.AppendLine("/// <summary>In-memory org projection + ledger writer hooks for generated entities.</summary>");
-        sb.AppendLine("public sealed class GeneratedEntityStore(ChangeLedgerWriter ledgerWriter, IDeltaCodec codec)");
+        sb.AppendLine("public sealed class GeneratedEntityStore(IChangeLedgerWriter ledgerWriter, IDeltaCodec codec)");
         sb.AppendLine("{");
 
         foreach (var entity in entities)
@@ -215,7 +215,7 @@ public sealed class SyncCodeEmitter
         sb.AppendLine($"using {RootNamespace}.Models;");
         sb.AppendLine("using SyncEngine.Abstractions.Codec;");
         sb.AppendLine("using SyncEngine.Abstractions.Protocol;");
-        sb.AppendLine("using SyncEngine.Server.Offline;");
+        sb.AppendLine("using SyncEngine.Abstractions.Offline;");
         sb.AppendLine();
         sb.AppendLine($"namespace {RootNamespace}.Server;");
         sb.AppendLine();
@@ -255,6 +255,7 @@ public sealed class SyncCodeEmitter
         sb.AppendLine("using Microsoft.AspNetCore.Builder;");
         sb.AppendLine("using Microsoft.AspNetCore.Http;");
         sb.AppendLine("using Microsoft.AspNetCore.Routing;");
+        sb.AppendLine("using Microsoft.Extensions.DependencyInjection;");
         sb.AppendLine("using SyncEngine.Abstractions.Auth;");
         sb.AppendLine();
         sb.AppendLine($"namespace {RootNamespace}.Server;");
@@ -263,21 +264,32 @@ public sealed class SyncCodeEmitter
         sb.AppendLine("{");
         sb.AppendLine("    public static IEndpointRouteBuilder MapGeneratedSyncRest(this IEndpointRouteBuilder endpoints)");
         sb.AppendLine("    {");
+        sb.AppendLine("        var requireAuth = endpoints.ServiceProvider");
+        sb.AppendLine("            .GetService<SyncEngine.Server.Hosting.SyncAuthFeature>()");
+        sb.AppendLine("            ?.RequireAuthenticatedClients == true;");
+        sb.AppendLine();
+        sb.AppendLine("        RouteHandlerBuilder Secure(RouteHandlerBuilder builder)");
+        sb.AppendLine("        {");
+        sb.AppendLine("            if (requireAuth)");
+        sb.AppendLine("            {");
+        sb.AppendLine("                builder.RequireAuthorization(SyncAuthPolicies.SyncClient);");
+        sb.AppendLine("            }");
+        sb.AppendLine("            return builder;");
+        sb.AppendLine("        }");
+        sb.AppendLine();
 
         foreach (var entity in entities)
         {
             var name = CSharpNames.SanitizeIdentifier(entity.EntityName);
             var route = ToKebab(entity.EntityName);
-            sb.AppendLine($"        endpoints.MapGet(\"/api/{route}\", (GeneratedEntityStore store) => Results.Ok(store.List{name}()))");
-            sb.AppendLine("            .RequireAuthorization(SyncAuthPolicies.SyncClient);");
-            sb.AppendLine($"        endpoints.MapPost(\"/api/{route}\", async ({name} entity, GeneratedEntityStore store, CancellationToken ct) =>");
-            sb.AppendLine($"            Results.Ok(await store.Upsert{name}Async(entity, ct)))");
-            sb.AppendLine("            .RequireAuthorization(SyncAuthPolicies.SyncClient);");
-            sb.AppendLine($"        endpoints.MapDelete(\"/api/{route}/{{key}}\", async (string key, GeneratedEntityStore store, CancellationToken ct) =>");
+            sb.AppendLine($"        Secure(endpoints.MapGet(\"/api/{route}\", (GeneratedEntityStore store) => Results.Ok(store.List{name}())));");
+            sb.AppendLine($"        Secure(endpoints.MapPost(\"/api/{route}\", async ({name} entity, GeneratedEntityStore store, CancellationToken ct) =>");
+            sb.AppendLine($"            Results.Ok(await store.Upsert{name}Async(entity, ct))));");
+            sb.AppendLine($"        Secure(endpoints.MapDelete(\"/api/{route}/{{key}}\", async (string key, GeneratedEntityStore store, CancellationToken ct) =>");
             sb.AppendLine("        {");
             sb.AppendLine($"            await store.Delete{name}Async(key, ct);");
             sb.AppendLine("            return Results.NoContent();");
-            sb.AppendLine("        }).RequireAuthorization(SyncAuthPolicies.SyncClient);");
+            sb.AppendLine("        }));");
             sb.AppendLine();
         }
 
@@ -295,7 +307,7 @@ public sealed class SyncCodeEmitter
         sb.AppendLine($"using {RootNamespace};");
         sb.AppendLine("using Microsoft.Extensions.DependencyInjection;");
         sb.AppendLine("using Microsoft.Extensions.DependencyInjection.Extensions;");
-        sb.AppendLine("using SyncEngine.Server.Offline;");
+        sb.AppendLine("using SyncEngine.Abstractions.Offline;");
         sb.AppendLine();
         sb.AppendLine($"namespace {RootNamespace}.Server;");
         sb.AppendLine();
@@ -306,12 +318,12 @@ public sealed class SyncCodeEmitter
         sb.AppendLine("        services.AddSingleton<GeneratedEntityStore>();");
         sb.AppendLine("        services.RemoveAll<IOfflineEntityApplicator>();");
         sb.AppendLine("        services.AddSingleton<IOfflineEntityApplicator, GeneratedOfflineApplicator>();");
-        sb.AppendLine("        services.AddSingleton(new SyncPushLimits");
+        sb.AppendLine("        services.Replace(ServiceDescriptor.Singleton(new SyncPushLimits");
         sb.AppendLine("        {");
         sb.AppendLine("            MaxBodyBytes = 1024 * 1024,");
         sb.AppendLine("            MaxChanges = 1000,");
         sb.AppendLine("            AllowedEntityNames = EntityNames.All.ToHashSet(StringComparer.OrdinalIgnoreCase),");
-        sb.AppendLine("        });");
+        sb.AppendLine("        }));");
         sb.AppendLine("        return services;");
         sb.AppendLine("    }");
         sb.AppendLine("}");
@@ -324,8 +336,10 @@ public sealed class SyncCodeEmitter
         var sb = new StringBuilder();
         sb.AppendLine("// <auto-generated />");
         sb.AppendLine($"using {RootNamespace};");
+        sb.AppendLine($"using {RootNamespace}.Models;");
         sb.AppendLine("using Microsoft.Extensions.DependencyInjection;");
         sb.AppendLine("using SyncEngine.Abstractions.Client;");
+        sb.AppendLine("using SyncEngine.Abstractions.Codec;");
         sb.AppendLine("using SyncEngine.Client;");
         sb.AppendLine("using SyncEngine.Client.Sqlite;");
         sb.AppendLine();
@@ -333,7 +347,7 @@ public sealed class SyncCodeEmitter
         sb.AppendLine();
         sb.AppendLine("public static class GeneratedSyncClientExtensions");
         sb.AppendLine("{");
-        sb.AppendLine("    /// <summary>Registers in-memory entity handlers for all generated sync entities.</summary>");
+        sb.AppendLine("    /// <summary>Registers in-memory entity handlers and typed stores for all generated sync entities.</summary>");
         sb.AppendLine("    public static IServiceCollection AddGeneratedSyncClient(this IServiceCollection services)");
         sb.AppendLine("    {");
         sb.AppendLine("        foreach (var entity in EntityNames.All)");
@@ -342,6 +356,14 @@ public sealed class SyncCodeEmitter
         sb.AppendLine("            services.AddSingleton<IEntityDeltaHandler>(sp =>");
         sb.AppendLine("                new InMemoryEntityDeltaHandler(name, sp.GetRequiredService<InMemoryEntityStore>()));");
         sb.AppendLine("        }");
+        sb.AppendLine();
+        sb.AppendLine("        // Typed entity stores");
+        foreach (var entity in entities)
+        {
+            var name = CSharpNames.SanitizeIdentifier(entity.EntityName);
+            sb.AppendLine($"        services.AddSingleton<ISyncEntityStore<{name}>>(sp =>");
+            sb.AppendLine($"            new TypedSyncEntityStore<{name}>(EntityNames.{name}, sp.GetRequiredService<InMemoryEntityStore>(), sp.GetRequiredService<IDeltaCodec>()));");
+        }
         sb.AppendLine();
         sb.AppendLine("        return services;");
         sb.AppendLine("    }");
@@ -371,16 +393,17 @@ public sealed class SyncCodeEmitter
                 <ImplicitUsings>enable</ImplicitUsings>
                 <Nullable>enable</Nullable>
                 <RootNamespace>{RootNamespace}</RootNamespace>
+                <SyncEngineSrcRoot Condition="'$(SyncEngineSrcRoot)' == ''">..\..\..\src\core\</SyncEngineSrcRoot>
               </PropertyGroup>
               <ItemGroup>
                 <PackageReference Include="MemoryPack" Version="1.21.4" />
                 <FrameworkReference Include="Microsoft.AspNetCore.App" />
               </ItemGroup>
               <ItemGroup>
-                <ProjectReference Include="..\..\..\src\core\SyncEngine.Abstractions\SyncEngine.Abstractions.csproj" />
-                <ProjectReference Include="..\..\..\src\core\SyncEngine.Server\SyncEngine.Server.csproj" />
-                <ProjectReference Include="..\..\..\src\core\SyncEngine.Client\SyncEngine.Client.csproj" />
-                <ProjectReference Include="..\..\..\src\core\SyncEngine.Client.Sqlite\SyncEngine.Client.Sqlite.csproj" />
+                <ProjectReference Include="$(SyncEngineSrcRoot)SyncEngine.Abstractions\SyncEngine.Abstractions.csproj" />
+                <ProjectReference Include="$(SyncEngineSrcRoot)SyncEngine.Server\SyncEngine.Server.csproj" />
+                <ProjectReference Include="$(SyncEngineSrcRoot)SyncEngine.Client\SyncEngine.Client.csproj" />
+                <ProjectReference Include="$(SyncEngineSrcRoot)SyncEngine.Client.Sqlite\SyncEngine.Client.Sqlite.csproj" />
               </ItemGroup>
             </Project>
             """;

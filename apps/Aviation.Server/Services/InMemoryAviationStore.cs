@@ -118,7 +118,7 @@ public sealed class InMemoryAviationStore(ChangeLedgerWriter ledgerWriter, IDelt
 
         if (lastVersion > 0)
         {
-            await ledgerWriter.EnqueueWakeAsync(lastVersion, AviationEntityNames.Facility, cancellationToken);
+            await ledgerWriter.EnqueueWakeAsync(lastVersion, AviationEntityNames.Facility, cancellationToken: cancellationToken);
         }
     }
 }

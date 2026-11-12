@@ -1,5 +1,5 @@
 using SyncEngine.Abstractions.Protocol;
-using SyncEngine.Client.Codec;
+using SyncEngine.Abstractions.Codec;
 using SyncEngine.Client.Offline;
 using Xunit;
 

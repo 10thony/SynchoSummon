@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.SignalR.Client;
 using SyncEngine.Abstractions;
 using SyncEngine.Abstractions.Protocol;
-using SyncEngine.Client.Codec;
+using SyncEngine.Abstractions.Codec;
 using Xunit;
 
 namespace SyncEngine.Tests;

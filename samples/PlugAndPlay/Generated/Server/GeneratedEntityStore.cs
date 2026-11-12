@@ -3,12 +3,12 @@ using System.Collections.Concurrent;
 using PlugAndPlay.Generated;
 using PlugAndPlay.Generated.Models;
 using SyncEngine.Abstractions.Codec;
-using SyncEngine.Server.Ledger;
+using SyncEngine.Abstractions.Ledger;
 
 namespace PlugAndPlay.Generated.Server;
 
 /// <summary>In-memory org projection + ledger writer hooks for generated entities.</summary>
-public sealed class GeneratedEntityStore(ChangeLedgerWriter ledgerWriter, IDeltaCodec codec)
+public sealed class GeneratedEntityStore(IChangeLedgerWriter ledgerWriter, IDeltaCodec codec)
 {
     private readonly ConcurrentDictionary<string, Facility> _facility = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, Equipment> _equipment = new(StringComparer.Ordinal);

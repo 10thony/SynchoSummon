@@ -22,7 +22,9 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<SqliteConnectionFactory>();
         services.AddSingleton<ICheckpointStore, SqliteCheckpointStore>();
         services.AddSingleton<SqliteOutboxStore>();
-        services.AddSingleton<IClientDeltaApplier, SqliteBatchApplier>();
+        services.AddSingleton<SqliteBatchApplier>();
+        services.AddSingleton<IClientDeltaApplier>(sp => sp.GetRequiredService<SqliteBatchApplier>());
+        services.AddSingleton<ISyncBatchNotifier>(sp => sp.GetRequiredService<SqliteBatchApplier>());
 
         foreach (var entityName in entityNames.Distinct(StringComparer.OrdinalIgnoreCase))
         {

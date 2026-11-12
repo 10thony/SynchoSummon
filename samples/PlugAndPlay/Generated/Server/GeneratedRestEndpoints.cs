@@ -3,6 +3,7 @@ using PlugAndPlay.Generated.Models;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.DependencyInjection;
 using SyncEngine.Abstractions.Auth;
 
 namespace PlugAndPlay.Generated.Server;
@@ -11,27 +12,36 @@ public static class GeneratedRestEndpoints
 {
     public static IEndpointRouteBuilder MapGeneratedSyncRest(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/api/facilities", (GeneratedEntityStore store) => Results.Ok(store.ListFacility()))
-            .RequireAuthorization(SyncAuthPolicies.SyncClient);
-        endpoints.MapPost("/api/facilities", async (Facility entity, GeneratedEntityStore store, CancellationToken ct) =>
-            Results.Ok(await store.UpsertFacilityAsync(entity, ct)))
-            .RequireAuthorization(SyncAuthPolicies.SyncClient);
-        endpoints.MapDelete("/api/facilities/{key}", async (string key, GeneratedEntityStore store, CancellationToken ct) =>
+        var requireAuth = endpoints.ServiceProvider
+            .GetService<SyncEngine.Server.Hosting.SyncAuthFeature>()
+            ?.RequireAuthenticatedClients == true;
+
+        RouteHandlerBuilder Secure(RouteHandlerBuilder builder)
+        {
+            if (requireAuth)
+            {
+                builder.RequireAuthorization(SyncAuthPolicies.SyncClient);
+            }
+            return builder;
+        }
+
+        Secure(endpoints.MapGet("/api/facilities", (GeneratedEntityStore store) => Results.Ok(store.ListFacility())));
+        Secure(endpoints.MapPost("/api/facilities", async (Facility entity, GeneratedEntityStore store, CancellationToken ct) =>
+            Results.Ok(await store.UpsertFacilityAsync(entity, ct))));
+        Secure(endpoints.MapDelete("/api/facilities/{key}", async (string key, GeneratedEntityStore store, CancellationToken ct) =>
         {
             await store.DeleteFacilityAsync(key, ct);
             return Results.NoContent();
-        }).RequireAuthorization(SyncAuthPolicies.SyncClient);
+        }));
 
-        endpoints.MapGet("/api/equipments", (GeneratedEntityStore store) => Results.Ok(store.ListEquipment()))
-            .RequireAuthorization(SyncAuthPolicies.SyncClient);
-        endpoints.MapPost("/api/equipments", async (Equipment entity, GeneratedEntityStore store, CancellationToken ct) =>
-            Results.Ok(await store.UpsertEquipmentAsync(entity, ct)))
-            .RequireAuthorization(SyncAuthPolicies.SyncClient);
-        endpoints.MapDelete("/api/equipments/{key}", async (string key, GeneratedEntityStore store, CancellationToken ct) =>
+        Secure(endpoints.MapGet("/api/equipments", (GeneratedEntityStore store) => Results.Ok(store.ListEquipment())));
+        Secure(endpoints.MapPost("/api/equipments", async (Equipment entity, GeneratedEntityStore store, CancellationToken ct) =>
+            Results.Ok(await store.UpsertEquipmentAsync(entity, ct))));
+        Secure(endpoints.MapDelete("/api/equipments/{key}", async (string key, GeneratedEntityStore store, CancellationToken ct) =>
         {
             await store.DeleteEquipmentAsync(key, ct);
             return Results.NoContent();
-        }).RequireAuthorization(SyncAuthPolicies.SyncClient);
+        }));
 
         return endpoints;
     }

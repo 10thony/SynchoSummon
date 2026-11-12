@@ -3,6 +3,7 @@ using SyncEngine.Abstractions.Auth;
 
 namespace SyncEngine.Client.Auth;
 
+[System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
 public sealed class SyncAuthDelegatingHandler(ISyncCredentialProvider credentials) : DelegatingHandler
 {
     protected override async Task<HttpResponseMessage> SendAsync(

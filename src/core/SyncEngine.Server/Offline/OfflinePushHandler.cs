@@ -1,7 +1,8 @@
 using SyncEngine.Abstractions.Auth;
 using SyncEngine.Abstractions.Codec;
+using SyncEngine.Abstractions.Ledger;
+using SyncEngine.Abstractions.Offline;
 using SyncEngine.Abstractions.Protocol;
-using SyncEngine.Server.Ledger;
 
 namespace SyncEngine.Server.Offline;
 
@@ -11,7 +12,7 @@ namespace SyncEngine.Server.Offline;
 /// </summary>
 public sealed class OfflinePushHandler(
     IDeltaCodec codec,
-    ChangeLedgerWriter ledgerWriter,
+    IChangeLedgerWriter ledgerWriter,
     IOfflineEntityApplicator applicator,
     ISyncAuthorization authorization,
     SyncPushLimits limits)
@@ -125,11 +126,6 @@ public sealed class OfflinePushHandler(
     }
 }
 
-public interface IOfflineEntityApplicator
-{
-    Task ApplyFromClientAsync(DeltaChange change, CancellationToken cancellationToken = default);
-}
-
 public sealed class NoOpOfflineEntityApplicator : IOfflineEntityApplicator
 {
     public Task ApplyFromClientAsync(DeltaChange change, CancellationToken cancellationToken = default)
@@ -137,21 +133,6 @@ public sealed class NoOpOfflineEntityApplicator : IOfflineEntityApplicator
 }
 
 public sealed record OfflinePushResult(int AppliedCount, long LatestVersion);
-
-public sealed class SyncPushLimits
-{
-    public static SyncPushLimits Default { get; } = new();
-
-    public int MaxBodyBytes { get; init; } = 1024 * 1024;
-
-    public int MaxChanges { get; init; } = 1000;
-
-    public int MaxKeyBytes { get; init; } = 16 * 1024;
-
-    public int MaxPayloadBytes { get; init; } = 512 * 1024;
-
-    public IReadOnlySet<string>? AllowedEntityNames { get; init; }
-}
 
 public sealed class SyncPushRejectedException : InvalidOperationException
 {

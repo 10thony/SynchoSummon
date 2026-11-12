@@ -3,7 +3,7 @@ using PlugAndPlay.Generated;
 using PlugAndPlay.Generated.Models;
 using SyncEngine.Abstractions.Codec;
 using SyncEngine.Abstractions.Protocol;
-using SyncEngine.Server.Offline;
+using SyncEngine.Abstractions.Offline;
 
 namespace PlugAndPlay.Generated.Server;
 

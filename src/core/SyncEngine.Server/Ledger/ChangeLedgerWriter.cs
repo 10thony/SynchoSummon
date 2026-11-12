@@ -10,11 +10,12 @@ namespace SyncEngine.Server.Ledger;
 /// <summary>
 /// Records entity changes into the durable ledger and enqueues coalesced wakes.
 /// </summary>
-public sealed class ChangeLedgerWriter(
+[System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+public class ChangeLedgerWriter(
     IChangeLedger ledger,
     IOrgStore orgStore,
     ISyncNotifier notifier,
-    ISyncTelemetry telemetry)
+    ISyncTelemetry telemetry) : IChangeLedgerWriter
 {
     public async Task<long> RecordUpsertAsync(
         string entityName,
@@ -55,9 +56,32 @@ public sealed class ChangeLedgerWriter(
             recordTelemetry);
     }
 
+    // Explicit interface implementations — delegate to the richer overloads above.
+    Task<long> IChangeLedgerWriter.RecordUpsertAsync(
+        string entityName,
+        ReadOnlyMemory<byte> keyBytes,
+        ReadOnlyMemory<byte> payloadBytes,
+        string? correlationId,
+        CancellationToken cancellationToken)
+        => RecordUpsertAsync(entityName, keyBytes, payloadBytes, correlationId, cancellationToken);
+
+    Task<long> IChangeLedgerWriter.RecordDeleteAsync(
+        string entityName,
+        ReadOnlyMemory<byte> keyBytes,
+        string? correlationId,
+        CancellationToken cancellationToken)
+        => RecordDeleteAsync(entityName, keyBytes, correlationId, cancellationToken);
+
+    ValueTask IChangeLedgerWriter.EnqueueWakeAsync(
+        long version,
+        string entityName,
+        string? tenantId,
+        CancellationToken cancellationToken)
+        => EnqueueWakeAsync(version, entityName, tenantId, cancellationToken);
+
     /// <summary>Enqueue a single coalesced wake after a silent multi-row seed/batch.</summary>
-    public ValueTask EnqueueWakeAsync(long version, string entityName, CancellationToken cancellationToken = default)
-        => notifier.EnqueueWakeAsync(version, entityName, cancellationToken);
+    public ValueTask EnqueueWakeAsync(long version, string entityName, string? tenantId = null, CancellationToken cancellationToken = default)
+        => notifier.EnqueueWakeAsync(version, entityName, tenantId, cancellationToken);
 
     private async Task<long> RecordAsync(
         string entityName,
@@ -102,11 +126,11 @@ public sealed class ChangeLedgerWriter(
         if (orgStore.HasActiveTransaction)
         {
             orgStore.RegisterPostCommitAction(token =>
-                notifier.EnqueueWakeAsync(version, entityName, token).AsTask());
+                notifier.EnqueueWakeAsync(version, entityName, cancellationToken: token).AsTask());
         }
         else
         {
-            await notifier.EnqueueWakeAsync(version, entityName, cancellationToken);
+            await notifier.EnqueueWakeAsync(version, entityName, cancellationToken: cancellationToken);
         }
 
         return version;

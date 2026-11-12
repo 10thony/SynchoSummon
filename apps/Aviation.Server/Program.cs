@@ -5,7 +5,7 @@ using SyncEngine.Auth;
 using SyncEngine.Providers.Oracle;
 using SyncEngine.Server.Hosting;
 using SyncEngine.Server.Ledger;
-using SyncEngine.Server.Offline;
+using SyncEngine.Abstractions.Offline;
 
 var builder = WebApplication.CreateBuilder(args);
 

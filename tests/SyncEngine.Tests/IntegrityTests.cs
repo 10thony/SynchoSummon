@@ -1,7 +1,7 @@
 using Aviation.Shared.Entities;
 using SyncEngine.Abstractions.Protocol;
 using SyncEngine.Client.Sqlite;
-using SyncEngine.Server.Codec;
+using SyncEngine.Abstractions.Codec;
 using SyncEngine.Server.Ledger;
 using Microsoft.Extensions.Options;
 using Xunit;

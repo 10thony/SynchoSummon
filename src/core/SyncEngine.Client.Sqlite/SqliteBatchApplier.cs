@@ -1,22 +1,41 @@
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using SyncEngine.Abstractions.Client;
 using SyncEngine.Abstractions.Protocol;
+using SyncEngine.Client;
 
 namespace SyncEngine.Client.Sqlite;
 
 /// <summary>
 /// Applies an entire delta batch inside one SQLite transaction for throughput.
 /// </summary>
-public sealed class SqliteBatchApplier(
-    SqliteConnectionFactory connectionFactory,
-    IEnumerable<IEntityDeltaHandler> handlers) : IClientDeltaApplier
+public sealed class SqliteBatchApplier : IClientDeltaApplier, ISyncBatchNotifier
 {
-    private readonly Dictionary<string, IEntityDeltaHandler> _handlers =
-        handlers.ToDictionary(h => h.EntityName, StringComparer.OrdinalIgnoreCase);
+    private readonly SqliteConnectionFactory _connectionFactory;
+    private readonly Dictionary<string, IEntityDeltaHandler> _handlers;
+    private readonly UnknownEntityBehavior _unknownEntityBehavior;
+    private readonly ILogger<SqliteBatchApplier> _logger;
+    private readonly HashSet<string> _warnedEntities = new(StringComparer.OrdinalIgnoreCase);
     private int _schemaReady;
+
+    /// <inheritdoc />
+    public event Action<DeltaBatch>? BatchApplied;
+
+    public SqliteBatchApplier(
+        SqliteConnectionFactory connectionFactory,
+        IEnumerable<IEntityDeltaHandler> handlers,
+        UnknownEntityBehavior unknownEntityBehavior = UnknownEntityBehavior.SkipAndWarn,
+        ILogger<SqliteBatchApplier>? logger = null)
+    {
+        _connectionFactory = connectionFactory;
+        _handlers = handlers.ToDictionary(h => h.EntityName, StringComparer.OrdinalIgnoreCase);
+        _unknownEntityBehavior = unknownEntityBehavior;
+        _logger = logger ?? NullLogger<SqliteBatchApplier>.Instance;
+    }
 
     public async Task ApplyAsync(DeltaBatch batch, CancellationToken cancellationToken = default)
     {
-        await using var connection = await connectionFactory.OpenAsync(cancellationToken);
+        await using var connection = await _connectionFactory.OpenAsync(cancellationToken);
         await EnsureEntitySchemaAsync(connection, cancellationToken);
 
         await using var transaction = (Microsoft.Data.Sqlite.SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
@@ -26,7 +45,19 @@ public sealed class SqliteBatchApplier(
             cancellationToken.ThrowIfCancellationRequested();
             if (!_handlers.TryGetValue(change.EntityName, out _))
             {
-                throw new InvalidOperationException($"No handler for '{change.EntityName}'.");
+                if (_unknownEntityBehavior == UnknownEntityBehavior.Throw)
+                {
+                    throw new InvalidOperationException($"No handler for '{change.EntityName}'.");
+                }
+
+                if (_warnedEntities.Add(change.EntityName))
+                {
+                    _logger.LogWarning(
+                        "SyncEngine: No SQLite handler for entity '{EntityName}'. Skipping.",
+                        change.EntityName);
+                }
+
+                continue;
             }
 
             await using var command = connection.CreateCommand();
@@ -56,6 +87,7 @@ public sealed class SqliteBatchApplier(
         }
 
         await transaction.CommitAsync(cancellationToken);
+        BatchApplied?.Invoke(batch);
     }
 
     private async Task EnsureEntitySchemaAsync(

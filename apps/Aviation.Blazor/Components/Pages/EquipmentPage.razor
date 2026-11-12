@@ -1,0 +1,200 @@
+@page "/equipment"
+@rendermode InteractiveServer
+@using Aviation.Shared.Entities
+@using SyncEngine.Abstractions.Client
+@inject ISyncEntityStore<Equipment> EquipmentStore
+@inject ISyncSession SyncSession
+@implements IDisposable
+
+<PageTitle>Equipment</PageTitle>
+
+<h1>Equipment</h1>
+<p>Live equipment inventory synced via SyncEngine.</p>
+
+<div class="sync-bar">
+    <span class="sync-pill sync-pill-@PhaseClass" title="@SyncSession.Snapshot.DisplayStatus">
+        <span class="sync-dot"></span>
+        @SyncSession.Snapshot.DisplayStatus
+    </span>
+    <span class="sync-meta">
+        Showing <strong>@_items.Count</strong> item@(_items.Count == 1 ? "" : "s")
+    </span>
+</div>
+
+<table>
+    <thead>
+        <tr>
+            <th>Identifier</th>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Facility</th>
+            <th>Status</th>
+        </tr>
+    </thead>
+    <tbody>
+    @if (!_initialized)
+    {
+        <tr><td colspan="5" class="equipment-loading">
+            <span class="loading-spinner"></span> Loading equipment…
+        </td></tr>
+    }
+    else if (_items.Count == 0)
+    {
+        <tr><td colspan="5" class="equipment-empty">
+            No equipment synced yet. Wait for sync to complete.
+        </td></tr>
+    }
+    else
+    {
+        @foreach (var eq in _items)
+        {
+            <tr @key="eq.EquipmentId">
+                <td>@eq.Identifier</td>
+                <td>@eq.Name</td>
+                <td>@eq.EquipmentTypeCode</td>
+                <td>@eq.FacilityId</td>
+                <td>@eq.OperationalStatus</td>
+            </tr>
+        }
+    }
+    </tbody>
+</table>
+
+<style>
+    .sync-bar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.75rem;
+        margin: 0.5rem 0 1rem;
+        font-size: 0.9rem;
+    }
+
+    .sync-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.15rem 0.6rem;
+        border-radius: 999px;
+        font-weight: 600;
+        line-height: 1.4;
+    }
+
+    .sync-dot {
+        width: 0.6rem;
+        height: 0.6rem;
+        border-radius: 50%;
+        background: currentColor;
+    }
+
+    .sync-pill-live { background: #e6f6ea; color: #197a3a; }
+    .sync-pill-syncing { background: #fff5d6; color: #8a6400; }
+    .sync-pill-syncing .sync-dot { animation: sync-pulse 1s ease-in-out infinite; }
+    .sync-pill-offline { background: #f0f0f0; color: #555; }
+    .sync-pill-error { background: #fde3e3; color: #a1241f; }
+    .sync-pill-initializing { background: #e6ecf5; color: #2a4a7f; }
+
+    @@keyframes sync-pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.3; }
+    }
+
+    .sync-meta { color: #555; }
+
+    .equipment-loading { text-align: center; padding: 2rem; }
+    .loading-spinner {
+        display: inline-block;
+        width: 1rem;
+        height: 1rem;
+        border: 2px solid #ccc;
+        border-top-color: #333;
+        border-radius: 50%;
+        animation: spin 0.6s linear infinite;
+    }
+    @@keyframes spin { to { transform: rotate(360deg); } }
+
+    .equipment-empty { font-style: italic; color: #777; padding: 1rem; text-align: center; }
+</style>
+
+@code {
+    private List<Equipment> _items = [];
+    private bool _initialized;
+    private readonly UiRefreshCoalescer _refresh = new();
+
+    protected override void OnInitialized()
+    {
+        EquipmentStore.EntityChanged += OnEntityChanged;
+        SyncSession.SnapshotChanged += OnSnapshotChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await RefreshAsync();
+        }
+    }
+
+    private void OnEntityChanged(SyncEntityEvent<Equipment> evt) => _ = InvokeAsync(RefreshAsync);
+
+    private void OnSnapshotChanged(SyncSessionSnapshot snap) => _ = InvokeAsync(StateHasChanged);
+
+    private string PhaseClass => SyncSession.Snapshot.Phase switch
+    {
+        SyncSessionPhase.Live => "live",
+        SyncSessionPhase.Syncing => "syncing",
+        SyncSessionPhase.CatchingUp => "syncing",
+        SyncSessionPhase.OfflinePolling => "offline",
+        SyncSessionPhase.Reconnecting => "syncing",
+        SyncSessionPhase.Degraded => "error",
+        _ => "initializing",
+    };
+
+    private async Task RefreshAsync()
+    {
+        if (!_refresh.TryBegin())
+        {
+            return;
+        }
+
+        try
+        {
+            do
+            {
+                var items = await Task.Run(() =>
+                {
+                    var all = EquipmentStore.GetAll();
+                    var list = new List<Equipment>(Math.Min(all.Count, 100));
+                    foreach (var eq in all)
+                    {
+                        eq.MetadataJson = null;
+                        list.Add(eq);
+                        if (list.Count >= 100) break;
+                    }
+                    list.Sort(static (a, b) =>
+                        string.Compare(a.Identifier, b.Identifier, StringComparison.OrdinalIgnoreCase));
+                    return list;
+                });
+                _items = items;
+                _initialized = true;
+                StateHasChanged();
+            }
+            while (_refresh.ConsumeDirty());
+        }
+        catch
+        {
+            _initialized = true;
+            StateHasChanged();
+        }
+        finally
+        {
+            _refresh.End();
+        }
+    }
+
+    public void Dispose()
+    {
+        EquipmentStore.EntityChanged -= OnEntityChanged;
+        SyncSession.SnapshotChanged -= OnSnapshotChanged;
+    }
+}

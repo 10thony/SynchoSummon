@@ -1,7 +1,7 @@
 using Aviation.Shared.Entities;
 using SyncEngine.Abstractions.Codec;
 using SyncEngine.Abstractions.Protocol;
-using SyncEngine.Server.Offline;
+using SyncEngine.Abstractions.Offline;
 
 namespace Aviation.Server.Services;
 

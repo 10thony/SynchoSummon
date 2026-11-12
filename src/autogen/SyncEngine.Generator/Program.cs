@@ -17,6 +17,7 @@ var dryRun = args.Contains("--dry-run", StringComparer.OrdinalIgnoreCase);
 var allowRemote = args.Contains("--allow-remote", StringComparer.OrdinalIgnoreCase);
 var include = GetArg(args, "--include")?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 var exclude = GetArg(args, "--exclude")?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+var strict = args.Contains("--strict", StringComparer.OrdinalIgnoreCase);
 var help = args.Contains("--help", StringComparer.OrdinalIgnoreCase) || args.Contains("-h", StringComparer.OrdinalIgnoreCase);
 
 if (help)
@@ -34,6 +35,7 @@ if (help)
           --out <dir>           Output directory (default ./generated)
           --namespace <ns>      Root namespace (default SyncEngine.Generated)
           --allow-remote        Allow non-loopback hosts
+          --strict              Fail on unknown manifest types (default: warn)
           --dry-run             List entities only
           --help                Show help
 
@@ -56,7 +58,7 @@ catch (InvalidOperationException ex)
 ISchemaReader reader;
 try
 {
-    reader = CreateReader(providerName, connection, schema, manifestPath, allowRemote);
+    reader = CreateReader(providerName, connection, schema, manifestPath, allowRemote, strict);
 }
 catch (Exception ex)
 {
@@ -109,11 +111,12 @@ static ISchemaReader CreateReader(
     string? connection,
     string? schema,
     string? manifestPath,
-    bool allowRemote)
+    bool allowRemote,
+    bool strict)
 {
     return provider switch
     {
-        SchemaProviders.Manifest => CreateManifestReader(manifestPath),
+        SchemaProviders.Manifest => CreateManifestReader(manifestPath, strict),
         SchemaProviders.Oracle => CreateOracleReader(connection, schema ?? "NAS_SIM", allowRemote),
         SchemaProviders.SqlServer => CreateSqlServerReader(connection, schema ?? "dbo", allowRemote),
         SchemaProviders.Postgres => CreatePostgresReader(connection, schema ?? "public", allowRemote),
@@ -122,7 +125,7 @@ static ISchemaReader CreateReader(
     };
 }
 
-static ISchemaReader CreateManifestReader(string? path)
+static ISchemaReader CreateManifestReader(string? path, bool strict)
 {
     if (string.IsNullOrWhiteSpace(path))
     {
@@ -134,7 +137,7 @@ static ISchemaReader CreateManifestReader(string? path)
         throw new InvalidOperationException($"Manifest not found: {path}");
     }
 
-    return new ManifestSchemaReader(path);
+    return new ManifestSchemaReader(path, strict);
 }
 
 static ISchemaReader CreateOracleReader(string? connection, string schema, bool allowRemote)

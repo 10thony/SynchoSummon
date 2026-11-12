@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="Aviation.Maui.EquipmentPage"
+             Title="Equipment">
+
+    <Grid RowDefinitions="Auto,Auto,*" Padding="16" RowSpacing="12">
+        <Label Text="Equipment" FontSize="22" FontAttributes="Bold" />
+
+        <Label Grid.Row="1" Text="{Binding CountText}" FontSize="12" />
+
+        <!-- Loading indicator -->
+        <Label Grid.Row="2"
+               Text="Loading equipment…"
+               IsVisible="{Binding IsLoading}"
+               HorizontalOptions="Center"
+               VerticalOptions="Center" />
+
+        <CollectionView Grid.Row="2" ItemsSource="{Binding Equipment}">
+            <CollectionView.EmptyView>
+                <Label Text="No equipment synced yet."
+                       HorizontalOptions="Center"
+                       FontAttributes="Italic" />
+            </CollectionView.EmptyView>
+            <CollectionView.ItemTemplate>
+                <DataTemplate>
+                    <Grid Padding="8" ColumnDefinitions="100,*,Auto">
+                        <Label Text="{Binding Identifier}" FontAttributes="Bold" />
+                        <Label Grid.Column="1" Text="{Binding Name}" />
+                        <Label Grid.Column="2" Text="{Binding OperationalStatus}" />
+                    </Grid>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+    </Grid>
+
+</ContentPage>

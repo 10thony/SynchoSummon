@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
 using Aviation.Shared.Entities;
 using Microsoft.Extensions.Logging;
+using SyncEngine.Abstractions.Client;
 using SyncEngine.Abstractions.Codec;
 using SyncEngine.Abstractions.Protocol;
 using SyncEngine.Client;
@@ -24,13 +25,17 @@ public sealed class FacilityListViewModel : INotifyPropertyChanged
     private readonly HttpClient _http;
     private readonly SyncPullService _pullService;
     private readonly MauiSyncBootstrapper _bootstrapper;
+    private readonly ISyncSession _session;
     private readonly ILogger<FacilityListViewModel> _logger;
     private readonly SemaphoreSlim _refreshGate = new(1, 1);
+    private readonly HashSet<string> _pendingIds = new(StringComparer.Ordinal);
 
     private string _statusText = "Starting…";
     private string? _errorText;
     private string _lastSyncText = "–";
     private string _facilityCountText = "0 facilities";
+    private bool _isLoading = true;
+    private string? _offlineBanner;
 
     public FacilityListViewModel(
         SqliteConnectionFactory connectionFactory,
@@ -38,6 +43,7 @@ public sealed class FacilityListViewModel : INotifyPropertyChanged
         IHttpClientFactory httpClientFactory,
         SyncPullService pullService,
         MauiSyncBootstrapper bootstrapper,
+        ISyncSession session,
         ILogger<FacilityListViewModel> logger)
     {
         _connectionFactory = connectionFactory;
@@ -45,12 +51,15 @@ public sealed class FacilityListViewModel : INotifyPropertyChanged
         _http = httpClientFactory.CreateClient();
         _pullService = pullService;
         _bootstrapper = bootstrapper;
+        _session = session;
         _logger = logger;
 
         _pullService.BatchApplied += OnBatchApplied;
         _bootstrapper.StatusChanged += OnBootstrapStatus;
         _bootstrapper.ErrorRaised += OnBootstrapError;
         _bootstrapper.SyncCompleted += OnBootstrapSyncCompleted;
+
+        _session.SnapshotChanged += OnSnapshotChanged;
     }
 
     public ObservableCollection<Facility> Facilities { get; } = [];
@@ -87,16 +96,40 @@ public sealed class FacilityListViewModel : INotifyPropertyChanged
         private set => SetField(ref _facilityCountText, value);
     }
 
+    public bool IsLoading
+    {
+        get => _isLoading;
+        private set
+        {
+            if (SetField(ref _isLoading, value))
+            {
+                OnPropertyChanged(nameof(IsEmpty));
+            }
+        }
+    }
+
+    public bool IsEmpty => !IsLoading && Facilities.Count == 0;
+
+    public bool HasPendingWrites => _pendingIds.Count > 0;
+
+    public bool IsPending(string facilityId) => _pendingIds.Contains(facilityId);
+
+    public string? OfflineBanner
+    {
+        get => _offlineBanner;
+        private set => SetField(ref _offlineBanner, value);
+    }
+
+    public bool ShowOfflineBanner => !string.IsNullOrEmpty(_offlineBanner);
+
     public event PropertyChangedEventHandler? PropertyChanged;
 
     /// <summary>
     /// Reload the top <see cref="DisplayLimit"/> facilities from local SQLite onto the UI.
-    /// Decode failures on individual rows are swallowed; <c>MetadataJson</c> is stripped so
-    /// large load-gen pads don't blow up the UI.
+    /// Uses diff-patch to avoid flicker instead of Clear+Add.
     /// </summary>
     public async Task RefreshAsync()
     {
-        // Prevent overlapping refreshes (e.g. BatchApplied firing while a manual refresh runs).
         if (!await _refreshGate.WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false))
         {
             return;
@@ -108,16 +141,28 @@ public sealed class FacilityListViewModel : INotifyPropertyChanged
 
             await InvokeOnMainThreadAsync(() =>
             {
-                Facilities.Clear();
-                foreach (var facility in items)
+                DiffPatch(Facilities, items, f => f.FacilityId, (existing, updated) =>
                 {
-                    Facilities.Add(facility);
+                    existing.FacilityCode = updated.FacilityCode;
+                    existing.Name = updated.Name;
+                    existing.City = updated.City;
+                    existing.StateCode = updated.StateCode;
+                    existing.OperationalStatus = updated.OperationalStatus;
+                });
+
+                // Clear pending IDs for items that arrived from the real data
+                foreach (var item in items)
+                {
+                    _pendingIds.Remove(item.FacilityId);
                 }
+                OnPropertyChanged(nameof(HasPendingWrites));
 
                 FacilityCountText = items.Count >= DisplayLimit
                     ? $"showing top {DisplayLimit}"
                     : $"{items.Count} facilities";
 
+                IsLoading = false;
+                OnPropertyChanged(nameof(IsEmpty));
                 OnPropertyChanged(nameof(Facilities));
             }).ConfigureAwait(false);
         }
@@ -158,24 +203,43 @@ public sealed class FacilityListViewModel : INotifyPropertyChanged
             Longitude = -90.7095m,
         };
 
+        _pendingIds.Add(facility.FacilityId);
+        await InvokeOnMainThreadAsync(() =>
+        {
+            Facilities.Insert(0, facility);
+            OnPropertyChanged(nameof(HasPendingWrites));
+            OnPropertyChanged(nameof(IsEmpty));
+        }).ConfigureAwait(false);
+
         try
         {
             using var response = await _http
                 .PostAsJsonAsync("http://localhost:5080/api/facilities", facility)
                 .ConfigureAwait(false);
-            response.EnsureSuccessStatusCode();
 
-            await InvokeOnMainThreadAsync(() => ErrorText = null).ConfigureAwait(false);
+            if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
+            {
+                await InvokeOnMainThreadAsync(() =>
+                    ErrorText = "Conflict: another user modified this facility.").ConfigureAwait(false);
+            }
+            else
+            {
+                response.EnsureSuccessStatusCode();
+                await InvokeOnMainThreadAsync(() => ErrorText = null).ConfigureAwait(false);
+            }
+        }
+        catch (HttpRequestException)
+        {
+            await InvokeOnMainThreadAsync(() =>
+                ErrorText = "Offline — change will sync when connected.").ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "AddFacility POST failed.");
-            await InvokeOnMainThreadAsync(() => ErrorText = $"Add failed: {ex.Message}").ConfigureAwait(false);
-            throw;
+            await InvokeOnMainThreadAsync(() =>
+                ErrorText = $"Add failed: {ex.Message}").ConfigureAwait(false);
         }
 
-        // Don't rely solely on the SignalR wake — pull now so the row shows up immediately
-        // in the demo even if the hub happens to be reconnecting.
         await PullAndRefreshAsync().ConfigureAwait(false);
     }
 
@@ -197,7 +261,6 @@ public sealed class FacilityListViewModel : INotifyPropertyChanged
             await ensure.ExecuteNonQueryAsync().ConfigureAwait(false);
         }
 
-        // Fetch a bit more than the display limit so decode errors don't shrink the list below the cap.
         var fetchLimit = Math.Max(limit * 4, limit);
 
         await using var command = connection.CreateCommand();
@@ -232,7 +295,6 @@ public sealed class FacilityListViewModel : INotifyPropertyChanged
             }
             catch (Exception ex)
             {
-                // A single bad row — maybe a MemoryPack schema skew — should never kill the refresh.
                 _logger.LogDebug(ex, "Skipping facility row that failed to decode ({Bytes} B).", payload.Length);
                 continue;
             }
@@ -242,7 +304,6 @@ public sealed class FacilityListViewModel : INotifyPropertyChanged
                 continue;
             }
 
-            // Drop the fat pad before the row touches the UI; the raw bytes stay in SQLite.
             facility.MetadataJson = null;
             decoded.Add(facility);
         }
@@ -253,6 +314,96 @@ public sealed class FacilityListViewModel : INotifyPropertyChanged
             decoded.RemoveRange(limit, decoded.Count - limit);
         }
         return decoded;
+    }
+
+    /// <summary>
+    /// Diff-patch an <see cref="ObservableCollection{T}"/> against a fresh source list.
+    /// Never calls <c>Clear()</c> — removes stale items, updates existing ones in-place,
+    /// and inserts new ones at the correct position.
+    /// </summary>
+    private static void DiffPatch<T>(
+        ObservableCollection<T> target,
+        IReadOnlyList<T> source,
+        Func<T, string> keySelector,
+        Action<T, T>? copyProps = null)
+    {
+        var sourceKeys = new HashSet<string>(source.Select(keySelector), StringComparer.Ordinal);
+
+        for (var i = target.Count - 1; i >= 0; i--)
+        {
+            if (!sourceKeys.Contains(keySelector(target[i])))
+                target.RemoveAt(i);
+        }
+
+        var targetMap = target.Select((item, idx) => (Key: keySelector(item), Index: idx))
+            .ToDictionary(x => x.Key, x => x.Index, StringComparer.Ordinal);
+
+        for (var i = 0; i < source.Count; i++)
+        {
+            var key = keySelector(source[i]);
+            if (targetMap.TryGetValue(key, out var existingIdx))
+            {
+                copyProps?.Invoke(target[existingIdx], source[i]);
+            }
+            else
+            {
+                target.Insert(Math.Min(i, target.Count), source[i]);
+            }
+        }
+    }
+
+    private SyncSessionPhase _lastPhase = SyncSessionPhase.Stopped;
+
+    private void OnSnapshotChanged(SyncSessionSnapshot snapshot)
+    {
+        var banner = snapshot.Phase switch
+        {
+            SyncSessionPhase.OfflinePolling => "You're offline. Changes will sync when connected.",
+            SyncSessionPhase.Reconnecting => "Reconnecting to sync server…",
+            SyncSessionPhase.Degraded when snapshot.LastError is not null =>
+                $"Sync error: {snapshot.LastError.Message}",
+            _ => null,
+        };
+
+        var wasDisconnected = _lastPhase is SyncSessionPhase.OfflinePolling
+            or SyncSessionPhase.Reconnecting
+            or SyncSessionPhase.Degraded;
+        var nowConnected = snapshot.Phase is SyncSessionPhase.Live
+            or SyncSessionPhase.CatchingUp
+            or SyncSessionPhase.Syncing;
+        var recovered = wasDisconnected && nowConnected;
+        _lastPhase = snapshot.Phase;
+
+        _ = InvokeOnMainThreadAsync(() =>
+        {
+            OfflineBanner = banner;
+            OnPropertyChanged(nameof(ShowOfflineBanner));
+
+            StatusText = snapshot.Phase is SyncSessionPhase.CatchingUp && snapshot.CatchUpAppliedCount is > 0
+                ? $"Catching up ({snapshot.CatchUpAppliedCount} applied)…"
+                : snapshot.DisplayStatus;
+
+            if (recovered)
+            {
+                ErrorText = null;
+            }
+        });
+
+        // After hub recovery, force a pull + UI reload so the list isn't stuck on stale SQLite.
+        if (recovered)
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await PullAndRefreshAsync().ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "Post-reconnect refresh failed.");
+                }
+            });
+        }
     }
 
     private void OnBatchApplied(DeltaBatch batch)
@@ -277,9 +428,6 @@ public sealed class FacilityListViewModel : INotifyPropertyChanged
             return;
         }
 
-        // Kick the refresh onto a background Task so we don't re-enter the pull lock
-        // or run the SQLite reader on the pull-service's thread. RefreshAsync marshals
-        // the ObservableCollection updates to the UI thread itself.
         _ = Task.Run(RefreshAsync);
     }
 
@@ -290,11 +438,15 @@ public sealed class FacilityListViewModel : INotifyPropertyChanged
         => _ = InvokeOnMainThreadAsync(() => ErrorText = ex?.Message);
 
     private void OnBootstrapSyncCompleted()
-        => _ = InvokeOnMainThreadAsync(() =>
+    {
+        _ = InvokeOnMainThreadAsync(() =>
         {
             LastSyncText = DateTimeOffset.Now.ToString("HH:mm:ss");
             ErrorText = null;
         });
+        // Periodic HTTP pulls apply to SQLite even while OfflinePolling — refresh the list.
+        _ = Task.Run(RefreshAsync);
+    }
 
     private static Task InvokeOnMainThreadAsync(Action action)
     {

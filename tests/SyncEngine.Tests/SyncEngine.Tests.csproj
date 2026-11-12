@@ -25,6 +25,10 @@
     <ProjectReference Include="..\..\src\autogen\SyncEngine.Generator\SyncEngine.Generator.csproj" />
     <ProjectReference Include="..\..\apps\Aviation.Shared\Aviation.Shared.csproj" />
     <ProjectReference Include="..\..\apps\Aviation.Server\Aviation.Server.csproj" />
+    <ProjectReference Include="..\..\samples\PlugAndPlay\Generated\PlugAndPlay.Generated.csproj" />
+    <ProjectReference Include="..\..\samples\PlugAndPlay\PlugAndPlay.Host\PlugAndPlay.Host.csproj">
+      <Aliases>PlugAndPlay</Aliases>
+    </ProjectReference>
   </ItemGroup>
 
   <ItemGroup>

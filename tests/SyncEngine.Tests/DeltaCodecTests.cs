@@ -1,6 +1,6 @@
 using Aviation.Shared.Entities;
 using SyncEngine.Abstractions.Protocol;
-using SyncEngine.Server.Codec;
+using SyncEngine.Abstractions.Codec;
 using Xunit;
 
 namespace SyncEngine.Tests;

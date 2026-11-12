@@ -35,6 +35,13 @@ public sealed class SyncClientOptions
     public int MaxPullIterations { get; set; } = 10_000;
 
     /// <summary>
+    /// Behavior when a delta arrives for an entity with no registered handler.
+    /// Default is <see cref="UnknownEntityBehavior.SkipAndWarn"/>; set to
+    /// <see cref="UnknownEntityBehavior.Throw"/> for exhaustive handler coverage.
+    /// </summary>
+    public UnknownEntityBehavior UnknownEntityBehavior { get; set; } = UnknownEntityBehavior.SkipAndWarn;
+
+    /// <summary>
     /// Named operating mode derived from <see cref="EnableSignalR"/> + <see cref="EnableDeltaStreaming"/>.
     /// Prefer this in session snapshots over reading the booleans independently.
     /// </summary>
@@ -75,6 +82,30 @@ public sealed class SyncClientOptions
 
         throw new InvalidOperationException(
             $"ServerBaseAddress '{ServerBaseAddress}' must use HTTPS unless AllowInsecureHttp is set or the host is loopback.");
+    }
+
+    /// <summary>
+    /// Warns when ServerBaseAddress matches the hosting app's own URLs.
+    /// Call from startup validation to catch self-referencing clients.
+    /// </summary>
+    public bool IsPotentialSelfReference(IEnumerable<string> hostUrls)
+    {
+        if (!Uri.TryCreate(ServerBaseAddress, UriKind.Absolute, out var clientUri))
+        {
+            return false;
+        }
+
+        foreach (var hostUrl in hostUrls)
+        {
+            if (Uri.TryCreate(hostUrl, UriKind.Absolute, out var hostUri)
+                && string.Equals(clientUri.Host, hostUri.Host, StringComparison.OrdinalIgnoreCase)
+                && clientUri.Port == hostUri.Port)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool IsLoopback(Uri uri)

@@ -1,8 +1,9 @@
 using SyncEngine.Abstractions.Auth;
 using SyncEngine.Abstractions.Protocol;
 using SyncEngine.Client;
-using SyncEngine.Client.Codec;
+using SyncEngine.Abstractions.Codec;
 using SyncEngine.Server.Ledger;
+using SyncEngine.Abstractions.Offline;
 using SyncEngine.Server.Offline;
 using Xunit;
 
@@ -134,8 +135,8 @@ public sealed class AdversarialIntegrityTests
         public ValueTask EnqueueWakeAsync(
             long version,
             string entityName,
-            CancellationToken cancellationToken = default,
-            string? tenantId = null)
+            string? tenantId = null,
+            CancellationToken cancellationToken = default)
             => ValueTask.CompletedTask;
     }
 

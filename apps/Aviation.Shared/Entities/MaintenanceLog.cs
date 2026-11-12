@@ -1,10 +1,13 @@
 using MemoryPack;
+using SyncEngine.Abstractions.Entity;
 
 namespace Aviation.Shared.Entities;
 
 [MemoryPackable]
-public partial class MaintenanceLog
+public partial class MaintenanceLog : ISyncEntity
 {
+    public static string EntityName => AviationEntityNames.MaintenanceLog;
+
     public string MaintenanceLogId { get; set; } = string.Empty;
 
     public string MaintenanceActivityId { get; set; } = string.Empty;

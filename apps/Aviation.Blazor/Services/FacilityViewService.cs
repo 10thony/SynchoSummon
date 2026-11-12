@@ -1,4 +1,6 @@
+using System.Collections.Concurrent;
 using Aviation.Shared.Entities;
+using SyncEngine.Abstractions.Client;
 using SyncEngine.Abstractions.Codec;
 using SyncEngine.Client;
 
@@ -23,20 +25,15 @@ public enum FacilityViewSyncStatus
 public sealed class FacilityViewService : IDisposable
 {
     private readonly InMemoryEntityStore _store;
+    private readonly ISyncEntityStore<Facility> _facilityStore;
     private readonly IDeltaCodec _codec;
     private readonly HttpClient _http;
     private readonly string _serverBase;
     private readonly ILogger<FacilityViewService> _logger;
+    private readonly ConcurrentDictionary<string, Facility> _optimistic = new();
 
     // Debounce config: collapse bursts of EntityChanged into a single UI refresh.
-    // Catch-up pulls after load-gen can fire thousands of EntityChanged events in rapid
-    // succession; without this, every change caused the Blazor circuit to re-decode the
-    // entire facility cache and re-render — pegging the circuit thread until the browser
-    // gave up and showed the generic "reconnecting" UI.
     private static readonly TimeSpan DebounceInterval = TimeSpan.FromMilliseconds(150);
-    // Guarantee a refresh at least every ~750ms during a long sustained burst so the
-    // user still sees progress mid catch-up instead of waiting silently for the burst
-    // to end.
     private static readonly TimeSpan MaxDebounceWait = TimeSpan.FromMilliseconds(750);
 
     private readonly object _timerLock = new();
@@ -47,19 +44,21 @@ public sealed class FacilityViewService : IDisposable
 
     public FacilityViewService(
         InMemoryEntityStore store,
+        ISyncEntityStore<Facility> facilityStore,
         IDeltaCodec codec,
         IHttpClientFactory httpClientFactory,
         IConfiguration configuration,
         ILogger<FacilityViewService> logger)
     {
         _store = store;
+        _facilityStore = facilityStore;
         _codec = codec;
         _http = httpClientFactory.CreateClient();
         _serverBase = configuration["SyncEngine:ServerBaseAddress"] ?? "http://localhost:5080";
         _logger = logger;
 
         _debounceTimer = new Timer(OnDebounceTick, state: null, dueTime: Timeout.Infinite, period: Timeout.Infinite);
-        _store.EntityChanged += OnStoreEntityChanged;
+        _facilityStore.EntityChanged += OnFacilityEntityChanged;
     }
 
     /// <summary>Fires at most once per <see cref="DebounceInterval"/> after cache mutations.</summary>
@@ -74,7 +73,12 @@ public sealed class FacilityViewService : IDisposable
 
     public DateTime? LastUpdateUtc { get; private set; }
 
+    public string? LastConflictMessage { get; private set; }
+
     public int CachedCount => _store.GetAll(AviationEntityNames.Facility).Count;
+
+    /// <summary>Returns true if the given facility ID is an optimistic (unconfirmed) entry.</summary>
+    public bool IsOptimistic(string facilityId) => _optimistic.ContainsKey(facilityId);
 
     public IReadOnlyList<Facility> GetFacilities(int take = 100)
     {
@@ -83,39 +87,46 @@ public sealed class FacilityViewService : IDisposable
             return Array.Empty<Facility>();
         }
 
-        // The UI only displays a sample — load packages can contain thousands of fat rows.
-        // Walking the ConcurrentDictionary view is safe against concurrent writers; worst
-        // case we read a snapshot that is one delta behind, which the next debounced
-        // refresh will reconcile.
         var cap = Math.Min(take, 100);
         var results = new List<Facility>(cap);
-        foreach (var bytes in _store.GetAll(AviationEntityNames.Facility).Values)
+        var synced = _facilityStore.GetAll();
+
+        foreach (var facility in synced)
         {
-            if (bytes is null || bytes.Length == 0)
-            {
-                // Deleted or empty payload — skip without noisy logging.
-                continue;
-            }
-
-            Facility? facility;
-            try
-            {
-                facility = _codec.Decode<Facility>(bytes);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogDebug(ex, "Skipping undecodable facility payload ({Length} bytes).", bytes.Length);
-                continue;
-            }
-
             if (facility is null)
             {
                 continue;
             }
 
-            // Drop giant pads from the view model so the page stays light.
             facility.MetadataJson = null;
             results.Add(facility);
+        }
+
+        // Merge optimistic entries: add any not yet confirmed by the store.
+        foreach (var (id, opt) in _optimistic)
+        {
+            if (!results.Any(f => f.FacilityId == id))
+            {
+                var clone = new Facility
+                {
+                    FacilityId = opt.FacilityId,
+                    FacilityCode = opt.FacilityCode,
+                    Name = opt.Name,
+                    FacilityTypeCode = opt.FacilityTypeCode,
+                    City = opt.City,
+                    StateCode = opt.StateCode,
+                    ZipCode = opt.ZipCode,
+                    Latitude = opt.Latitude,
+                    Longitude = opt.Longitude,
+                    OperationalStatus = opt.OperationalStatus,
+                };
+                results.Add(clone);
+            }
+            else
+            {
+                // Real data arrived — remove from optimistic
+                _optimistic.TryRemove(id, out _);
+            }
         }
 
         results.Sort(static (a, b) =>
@@ -129,6 +140,34 @@ public sealed class FacilityViewService : IDisposable
         return results;
     }
 
+    public async Task UpsertOptimisticAsync(Facility facility, CancellationToken cancellationToken = default)
+    {
+        _optimistic[facility.FacilityId] = facility;
+        Changed?.Invoke();
+
+        try
+        {
+            using var response = await _http.PostAsJsonAsync(
+                $"{_serverBase.TrimEnd('/')}/api/facilities", facility, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                LastConflictMessage = response.StatusCode == System.Net.HttpStatusCode.Conflict
+                    ? "Conflict: another user modified this facility."
+                    : $"Server error: {response.StatusCode}";
+                RaiseStatusChanged();
+            }
+            else
+            {
+                LastConflictMessage = null;
+            }
+        }
+        catch (HttpRequestException)
+        {
+            LastConflictMessage = "Offline — change queued locally.";
+            RaiseStatusChanged();
+        }
+    }
+
     public async Task UpsertAsync(Facility facility, CancellationToken cancellationToken = default)
     {
         using var response = await _http.PostAsJsonAsync(
@@ -136,6 +175,12 @@ public sealed class FacilityViewService : IDisposable
             facility,
             cancellationToken);
         response.EnsureSuccessStatusCode();
+    }
+
+    public void DismissConflict()
+    {
+        LastConflictMessage = null;
+        RaiseStatusChanged();
     }
 
     /// <summary>Called by the sync host to publish lightweight status to the UI.</summary>
@@ -157,8 +202,7 @@ public sealed class FacilityViewService : IDisposable
     }
 
     /// <summary>
-    /// Marks the last successful apply time. Session phase (Live vs Offline) is owned by
-    /// the core sync session via <see cref="SetStatus"/> — do not infer Live here.
+    /// Marks the last successful apply time.
     /// </summary>
     public void MarkAppliedBatch()
     {
@@ -166,17 +210,17 @@ public sealed class FacilityViewService : IDisposable
         RaiseStatusChanged();
     }
 
-    private void OnStoreEntityChanged(string entityName)
+    private void OnFacilityEntityChanged(SyncEntityEvent<Facility> evt)
     {
-        if (!string.Equals(entityName, AviationEntityNames.Facility, StringComparison.OrdinalIgnoreCase))
-        {
-            // Future-proof: ignore streams the facilities page does not render.
-            return;
-        }
-
         if (Volatile.Read(ref _disposed) != 0)
         {
             return;
+        }
+
+        // Clean up optimistic entries when real data arrives
+        if (evt.Entity is { } entity)
+        {
+            _optimistic.TryRemove(entity.FacilityId, out _);
         }
 
         lock (_timerLock)
@@ -187,8 +231,6 @@ public sealed class FacilityViewService : IDisposable
                 _firstPendingUtc = DateTime.UtcNow;
             }
 
-            // If we have been coalescing for too long, flush immediately so the user still
-            // sees mid-burst progress instead of waiting for the whole catch-up to finish.
             var elapsed = DateTime.UtcNow - _firstPendingUtc;
             var delay = elapsed >= MaxDebounceWait ? TimeSpan.Zero : DebounceInterval;
 
@@ -198,7 +240,6 @@ public sealed class FacilityViewService : IDisposable
             }
             catch (ObjectDisposedException)
             {
-                // Service is shutting down — drop the signal.
             }
         }
     }
@@ -227,8 +268,6 @@ public sealed class FacilityViewService : IDisposable
         }
         catch (Exception ex)
         {
-            // A subscriber (e.g. a disposed Blazor component) should never take the sync
-            // pipeline down.
             _logger.LogDebug(ex, "FacilityViewService.Changed subscriber threw.");
         }
     }
@@ -258,7 +297,7 @@ public sealed class FacilityViewService : IDisposable
             return;
         }
 
-        _store.EntityChanged -= OnStoreEntityChanged;
+        _facilityStore.EntityChanged -= OnFacilityEntityChanged;
         _debounceTimer.Dispose();
     }
 }

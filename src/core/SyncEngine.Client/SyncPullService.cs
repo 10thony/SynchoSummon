@@ -10,8 +10,11 @@ using SyncEngine.Client.Telemetry;
 
 namespace SyncEngine.Client;
 
-public sealed class SyncPullService
+public sealed class SyncPullService : ISyncApplyNotifications, ISyncBatchNotifier
 {
+    private const int WakeChannelCapacity = 256;
+    private const int DeltaChannelCapacity = 64;
+
     private readonly ISyncTransport _transport;
     private readonly IDeltaCodec _codec;
     private readonly IClientDeltaApplier _applier;
@@ -22,19 +25,26 @@ public sealed class SyncPullService
     private readonly SemaphoreSlim _pullLock = new(1, 1);
     // Bounded: DropOldest — newer wakes supersede; dropped deltas trigger HTTP catch-up via gap/wake.
     private readonly Channel<SyncWake> _wakeChannel = Channel.CreateBounded<SyncWake>(
-        new BoundedChannelOptions(256)
+        new BoundedChannelOptions(WakeChannelCapacity)
         {
             SingleReader = true,
             SingleWriter = false,
             FullMode = BoundedChannelFullMode.DropOldest,
         });
     private readonly Channel<byte[]> _deltaChannel = Channel.CreateBounded<byte[]>(
-        new BoundedChannelOptions(64)
+        new BoundedChannelOptions(DeltaChannelCapacity)
         {
             SingleReader = true,
             SingleWriter = false,
             FullMode = BoundedChannelFullMode.DropOldest,
         });
+
+    private long _wakeDropCount;
+    private long _deltaDropCount;
+    private long _lastStreamApplyUtcTicks;
+
+    private int _catchUpAppliedCount = -1;
+    public int? CatchUpAppliedCount => Volatile.Read(ref _catchUpAppliedCount) is var v && v < 0 ? null : (int?)v;
 
     public SyncPullService(
         ISyncTransport transport,
@@ -54,16 +64,37 @@ public sealed class SyncPullService
         _telemetry = telemetry;
     }
 
+    public long WakeDropCount => Interlocked.Read(ref _wakeDropCount);
+    public long DeltaDropCount => Interlocked.Read(ref _deltaDropCount);
+
+    public DateTimeOffset? LastStreamApplyUtc
+    {
+        get
+        {
+            var ticks = Interlocked.Read(ref _lastStreamApplyUtcTicks);
+            return ticks == 0 ? null : new DateTimeOffset(ticks, TimeSpan.Zero);
+        }
+    }
+
     public event Action<DeltaBatch>? BatchApplied;
 
     /// <summary>Raised when the pull/apply pipeline enters a named phase (Idle, stream apply, HTTP catch-up, gap repair).</summary>
     public event Action<SyncApplyPhase>? ApplyPhaseChanged;
 
     public ValueTask NotifyWakeAsync(SyncWake wake, CancellationToken cancellationToken = default)
-        => _wakeChannel.Writer.WriteAsync(wake, cancellationToken);
+    {
+        // BoundedChannel DropOldest drops silently; approximate tracking via count check.
+        if (_wakeChannel.Reader.Count >= WakeChannelCapacity)
+            Interlocked.Increment(ref _wakeDropCount);
+        return _wakeChannel.Writer.WriteAsync(wake, cancellationToken);
+    }
 
     public ValueTask NotifyStreamedDeltaAsync(ReadOnlyMemory<byte> encodedBatch, CancellationToken cancellationToken = default)
-        => _deltaChannel.Writer.WriteAsync(encodedBatch.ToArray(), cancellationToken);
+    {
+        if (_deltaChannel.Reader.Count >= DeltaChannelCapacity)
+            Interlocked.Increment(ref _deltaDropCount);
+        return _deltaChannel.Writer.WriteAsync(encodedBatch.ToArray(), cancellationToken);
+    }
 
     public async Task RunWakeLoopAsync(CancellationToken cancellationToken)
     {
@@ -144,6 +175,7 @@ public sealed class SyncPullService
                 await _checkpointStore.SetVersionAsync(batch.ToVersion, _options.CheckpointScope, cancellationToken);
                 sw.Stop();
                 appliedBatch = batch;
+                Interlocked.Exchange(ref _lastStreamApplyUtcTicks, DateTimeOffset.UtcNow.Ticks);
 
                 if (_telemetry is not null && batch.Changes is { Length: > 0 })
                 {
@@ -205,6 +237,7 @@ public sealed class SyncPullService
         List<DeltaBatch>? appliedBatches = null;
 
         RaiseApplyPhase(SyncApplyPhase.HttpCatchUp);
+        Volatile.Write(ref _catchUpAppliedCount, 0);
         await _pullLock.WaitAsync(cancellationToken);
         try
         {
@@ -251,6 +284,7 @@ public sealed class SyncPullService
                 await _checkpointStore.SetVersionAsync(batch.ToVersion, _options.CheckpointScope, cancellationToken);
 
                 applied += batch.Changes.Length;
+                Volatile.Write(ref _catchUpAppliedCount, applied);
                 toVersion = batch.ToVersion;
                 foreach (var change in batch.Changes)
                 {
@@ -289,6 +323,7 @@ public sealed class SyncPullService
         finally
         {
             _pullLock.Release();
+            Volatile.Write(ref _catchUpAppliedCount, -1);
             RaiseApplyPhase(SyncApplyPhase.Idle);
         }
 

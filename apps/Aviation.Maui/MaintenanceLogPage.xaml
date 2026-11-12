@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="Aviation.Maui.MaintenanceLogPage"
+             Title="Maintenance Logs">
+
+    <Grid RowDefinitions="Auto,Auto,*" Padding="16" RowSpacing="12">
+        <Label Text="Maintenance Logs" FontSize="22" FontAttributes="Bold" />
+
+        <Label Grid.Row="1" Text="{Binding CountText}" FontSize="12" />
+
+        <!-- Loading indicator -->
+        <Label Grid.Row="2"
+               Text="Loading logs…"
+               IsVisible="{Binding IsLoading}"
+               HorizontalOptions="Center"
+               VerticalOptions="Center" />
+
+        <CollectionView Grid.Row="2" ItemsSource="{Binding Logs}">
+            <CollectionView.EmptyView>
+                <Label Text="No maintenance logs synced yet."
+                       HorizontalOptions="Center"
+                       FontAttributes="Italic" />
+            </CollectionView.EmptyView>
+            <CollectionView.ItemTemplate>
+                <DataTemplate>
+                    <Grid Padding="8" ColumnDefinitions="100,*,100,Auto">
+                        <Label Text="{Binding LogEntryType}" FontAttributes="Bold" />
+                        <Label Grid.Column="1" Text="{Binding Message}" LineBreakMode="TailTruncation" />
+                        <Label Grid.Column="2" Text="{Binding FacilityId}" />
+                        <Label Grid.Column="3" Text="{Binding LoggedAt, StringFormat='{0:g}'}" FontSize="11" />
+                    </Grid>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+    </Grid>
+
+</ContentPage>

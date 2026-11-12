@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using Microsoft.Extensions.Options;
 using SyncEngine.Client.Sqlite;
-using SyncEngine.Server.Codec;
+using SyncEngine.Abstractions.Codec;
 
 namespace SyncEngine.Benchmarks;
 

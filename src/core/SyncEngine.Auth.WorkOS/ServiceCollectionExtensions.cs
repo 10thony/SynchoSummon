@@ -5,7 +5,7 @@ using Microsoft.IdentityModel.Tokens;
 using SyncEngine.Abstractions.Auth;
 using SyncEngine.Auth;
 using SyncEngine.Server.Hosting;
-using SyncEngine.Server.Offline;
+using SyncEngine.Abstractions.Offline;
 using WorkOS;
 
 namespace SyncEngine.Auth.WorkOS;

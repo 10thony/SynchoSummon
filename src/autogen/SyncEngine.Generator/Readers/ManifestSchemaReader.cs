@@ -1,5 +1,6 @@
 using System.Text.Json;
 using SyncEngine.Abstractions.Schema;
+using SyncEngine.Abstractions.Schema.Manifest;
 
 namespace SyncEngine.Generator.Readers;
 
@@ -7,7 +8,7 @@ namespace SyncEngine.Generator.Readers;
 /// Reads a previously emitted (or hand-authored) manifest.json as the generator IR.
 /// Useful for offline regeneration and tests without a live database.
 /// </summary>
-public sealed class ManifestSchemaReader(string manifestPath) : ISchemaReader
+public sealed class ManifestSchemaReader(string manifestPath, bool strict = false) : ISchemaReader
 {
     private static readonly Dictionary<string, Type> TypeMap = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -50,7 +51,7 @@ public sealed class ManifestSchemaReader(string manifestPath) : ISchemaReader
             {
                 PropertyName = p.PropertyName,
                 ColumnName = p.ColumnName,
-                ClrType = TypeMap.TryGetValue(p.Type ?? "string", out var t) ? t : typeof(string),
+                ClrType = ResolveType(p.Type, p.PropertyName, d.EntityName),
                 IsKey = p.IsKey,
                 IsPayload = p.IsPayload,
                 IsNullable = p.IsNullable,
@@ -63,25 +64,18 @@ public sealed class ManifestSchemaReader(string manifestPath) : ISchemaReader
         return SchemaFilter.OrderByDependencies(entities);
     }
 
-    private sealed class ManifestEntity
+    private Type ResolveType(string? rawType, string propertyName, string entityName)
     {
-        public string EntityName { get; set; } = "";
-        public string TableName { get; set; } = "";
-        public string? SchemaName { get; set; }
-        public List<string>? KeyColumns { get; set; }
-        public List<ManifestProperty>? Properties { get; set; }
-        public bool Syncable { get; set; } = true;
-        public int DependencyOrder { get; set; }
-        public List<string>? ReferencedTables { get; set; }
-    }
+        var typeName = rawType ?? "string";
+        if (TypeMap.TryGetValue(typeName, out var t))
+            return t;
 
-    private sealed class ManifestProperty
-    {
-        public string PropertyName { get; set; } = "";
-        public string ColumnName { get; set; } = "";
-        public string? Type { get; set; }
-        public bool IsKey { get; set; }
-        public bool IsPayload { get; set; } = true;
-        public bool IsNullable { get; set; }
+        if (strict)
+            throw new InvalidOperationException(
+                $"Unknown manifest type '{typeName}' for property '{propertyName}' on entity '{entityName}'.");
+
+        Console.WriteLine(
+            $"WARNING: Unknown manifest type '{typeName}' for property '{propertyName}' on entity '{entityName}' — defaulting to string.");
+        return typeof(string);
     }
 }

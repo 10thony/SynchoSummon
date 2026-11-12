@@ -3,7 +3,7 @@ using BenchmarkDotNet.Attributes;
 using Microsoft.Extensions.Options;
 using SyncEngine.Abstractions.Protocol;
 using SyncEngine.Client.Sqlite;
-using SyncEngine.Server.Codec;
+using SyncEngine.Abstractions.Codec;
 
 namespace SyncEngine.Benchmarks;
 

@@ -12,6 +12,7 @@ using SyncEngine.Abstractions;
 using SyncEngine.Abstractions.Auth;
 using SyncEngine.Abstractions.Codec;
 using SyncEngine.Abstractions.Ledger;
+using SyncEngine.Abstractions.Offline;
 using SyncEngine.Abstractions.Protocol;
 using SyncEngine.Abstractions.Telemetry;
 using SyncEngine.Server.Hubs;

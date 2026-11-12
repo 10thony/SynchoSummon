@@ -2,6 +2,7 @@ using SyncEngine.Abstractions.Store;
 
 namespace SyncEngine.Server.Store;
 
+[System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
 public sealed class NoOpOrgStore : IOrgStore
 {
     public bool HasActiveTransaction => false;

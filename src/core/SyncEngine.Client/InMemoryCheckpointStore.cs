@@ -2,6 +2,7 @@ using SyncEngine.Abstractions.Client;
 
 namespace SyncEngine.Client;
 
+[System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
 public sealed class InMemoryCheckpointStore : ICheckpointStore
 {
     private readonly Dictionary<string, long> _versions = new(StringComparer.OrdinalIgnoreCase);

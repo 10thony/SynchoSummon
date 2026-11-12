@@ -5,6 +5,7 @@ namespace SyncEngine.Abstractions.Auth;
 /// <summary>
 /// Permits every read/push. Only register via explicit anonymous-access opt-in.
 /// </summary>
+[System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
 public sealed class UnsafeAllowAllSyncAuthorization : ISyncAuthorization
 {
     public bool CanRead(

@@ -2,7 +2,7 @@
 using PlugAndPlay.Generated;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using SyncEngine.Server.Offline;
+using SyncEngine.Abstractions.Offline;
 
 namespace PlugAndPlay.Generated.Server;
 
@@ -13,12 +13,12 @@ public static class GeneratedSyncServerExtensions
         services.AddSingleton<GeneratedEntityStore>();
         services.RemoveAll<IOfflineEntityApplicator>();
         services.AddSingleton<IOfflineEntityApplicator, GeneratedOfflineApplicator>();
-        services.AddSingleton(new SyncPushLimits
+        services.Replace(ServiceDescriptor.Singleton(new SyncPushLimits
         {
             MaxBodyBytes = 1024 * 1024,
             MaxChanges = 1000,
             AllowedEntityNames = EntityNames.All.ToHashSet(StringComparer.OrdinalIgnoreCase),
-        });
+        }));
         return services;
     }
 }

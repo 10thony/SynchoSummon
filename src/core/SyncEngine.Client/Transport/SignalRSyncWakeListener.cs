@@ -158,6 +158,32 @@ public sealed class SignalRSyncWakeListener : ISyncWakeListener
         }
     }
 
+    public async Task ReconnectAsync(CancellationToken cancellationToken = default)
+    {
+        if (!_options.EnableSignalR)
+        {
+            SetLinkState(SyncHubLinkState.Disabled);
+            return;
+        }
+
+        if (_connection is not null)
+        {
+            try
+            {
+                await _connection.DisposeAsync().ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Disposing prior SignalR hub connection during reconnect.");
+            }
+
+            _connection = null;
+        }
+
+        // Allow StartAsync to run again after a failed or exhausted connection.
+        await StartAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (_connection is not null)

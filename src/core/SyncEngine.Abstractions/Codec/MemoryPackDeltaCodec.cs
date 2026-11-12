@@ -1,9 +1,8 @@
 using MemoryPack;
 using SyncEngine.Abstractions.Buffers;
-using SyncEngine.Abstractions.Codec;
 using SyncEngine.Abstractions.Protocol;
 
-namespace SyncEngine.Client.Codec;
+namespace SyncEngine.Abstractions.Codec;
 
 public sealed class MemoryPackDeltaCodec : IDeltaCodec
 {

@@ -8,7 +8,7 @@ namespace SyncEngine.Client;
 /// <summary>
 /// Process-local entity bag used by Blazor demos and unit tests.
 /// </summary>
-public sealed class InMemoryEntityStore
+public class InMemoryEntityStore
 {
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, byte[]>> _entities = new(StringComparer.OrdinalIgnoreCase);
 
@@ -41,7 +41,7 @@ public sealed class InMemoryEntityStore
     }
 }
 
-public sealed class InMemoryEntityDeltaHandler(string entityName, InMemoryEntityStore store)
+public class InMemoryEntityDeltaHandler(string entityName, InMemoryEntityStore store)
     : IEntityDeltaHandler
 {
     public string EntityName { get; } = entityName;

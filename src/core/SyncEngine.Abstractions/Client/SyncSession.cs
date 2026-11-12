@@ -1,3 +1,5 @@
+using SyncEngine.Abstractions.Protocol;
+
 namespace SyncEngine.Abstractions.Client;
 
 /// <summary>
@@ -72,7 +74,26 @@ public sealed record SyncSessionSnapshot(
     string DisplayStatus,
     string? Detail = null,
     Exception? LastError = null,
-    DateTimeOffset? LastSuccessUtc = null);
+    DateTimeOffset? LastSuccessUtc = null,
+    SyncOutboxPhase? OutboxPhase = null,
+    int? OutboxPendingCount = null,
+    int? CatchUpAppliedCount = null,
+    DateTimeOffset? LastStreamApplyUtc = null,
+    long ChannelWakeDropCount = 0,
+    long ChannelDeltaDropCount = 0);
+
+/// <summary>
+/// Framework-agnostic notifications for sync apply events.
+/// Prefer this interface over depending on concrete SyncPullService.
+/// </summary>
+public interface ISyncApplyNotifications
+{
+    /// <summary>Raised after each successfully applied delta batch.</summary>
+    event Action<DeltaBatch>? BatchApplied;
+
+    /// <summary>Raised when the pull/apply pipeline enters a named phase.</summary>
+    event Action<SyncApplyPhase>? ApplyPhaseChanged;
+}
 
 /// <summary>
 /// Explicit sync session state machine. Adopter hosts should bind UI to
@@ -125,7 +146,13 @@ public static class SyncSessionDisplay
         long? checkpoint = null,
         string? detail = null,
         Exception? lastError = null,
-        DateTimeOffset? lastSuccessUtc = null)
+        DateTimeOffset? lastSuccessUtc = null,
+        SyncOutboxPhase? outboxPhase = null,
+        int? outboxPendingCount = null,
+        int? catchUpAppliedCount = null,
+        DateTimeOffset? lastStreamApplyUtc = null,
+        long channelWakeDropCount = 0,
+        long channelDeltaDropCount = 0)
         => new(
             phase,
             hub,
@@ -134,5 +161,11 @@ public static class SyncSessionDisplay
             Format(phase, checkpoint, detail),
             detail,
             lastError,
-            lastSuccessUtc);
+            lastSuccessUtc,
+            outboxPhase,
+            outboxPendingCount,
+            catchUpAppliedCount,
+            lastStreamApplyUtc,
+            channelWakeDropCount,
+            channelDeltaDropCount);
 }

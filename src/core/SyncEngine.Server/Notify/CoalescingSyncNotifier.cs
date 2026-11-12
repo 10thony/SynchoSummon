@@ -18,15 +18,20 @@ namespace SyncEngine.Server.Notify;
 /// (<see cref="SyncHubEvents.SyncDelta"/>). Also emits a lightweight <see cref="SyncWake"/> for
 /// clients that disable streaming. HTTP <c>/sync/deltas</c> remains the catch-up path.
 /// </summary>
+[System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
 public sealed class CoalescingSyncNotifier : BackgroundService, ISyncNotifier
 {
+    private const int ChannelCapacity = 10_000;
+
     private readonly Channel<WakeEvent> _channel =
-        Channel.CreateBounded<WakeEvent>(new BoundedChannelOptions(10_000)
+        Channel.CreateBounded<WakeEvent>(new BoundedChannelOptions(ChannelCapacity)
         {
             SingleReader = true,
             SingleWriter = false,
             FullMode = BoundedChannelFullMode.DropOldest,
         });
+
+    private long _channelDropCount;
 
     private readonly IHubContext<SyncHub> _hubContext;
     private readonly IChangeLedger _ledger;
@@ -37,6 +42,8 @@ public sealed class CoalescingSyncNotifier : BackgroundService, ISyncNotifier
     private readonly int _batchSize;
     private readonly int _maxStreamMessageBytes;
     private long _lastStreamedVersion = -1;
+
+    public long ChannelDropCount => Interlocked.Read(ref _channelDropCount);
 
     public CoalescingSyncNotifier(
         IHubContext<SyncHub> hubContext,
@@ -62,10 +69,16 @@ public sealed class CoalescingSyncNotifier : BackgroundService, ISyncNotifier
     public ValueTask EnqueueWakeAsync(
         long version,
         string entityName,
-        CancellationToken cancellationToken = default,
-        string? tenantId = null)
+        string? tenantId = null,
+        CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(entityName);
+        if (_channel.Reader.Count >= ChannelCapacity)
+        {
+            Interlocked.Increment(ref _channelDropCount);
+            _logger.LogWarning("CoalescingSyncNotifier channel at capacity ({Capacity}); oldest wake will be dropped. Total drops: {Drops}",
+                ChannelCapacity, Interlocked.Read(ref _channelDropCount));
+        }
         return _channel.Writer.WriteAsync(new WakeEvent(version, entityName, tenantId), cancellationToken);
     }
 

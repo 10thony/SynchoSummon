@@ -45,9 +45,16 @@ public static class MauiProgram
             options => options.ConnectionString = $"Data Source={dbPath}",
             AviationEntityNames.All);
 
+        // ViewModels
         builder.Services.AddSingleton<MauiSyncBootstrapper>();
         builder.Services.AddSingleton<FacilityListViewModel>();
+        builder.Services.AddSingleton<EquipmentViewModel>();
+        builder.Services.AddSingleton<MaintenanceLogViewModel>();
+
+        // Pages
         builder.Services.AddTransient<MainPage>();
+        builder.Services.AddTransient<EquipmentPage>();
+        builder.Services.AddTransient<MaintenanceLogPage>();
 
 #if DEBUG
         builder.Logging.AddDebug();

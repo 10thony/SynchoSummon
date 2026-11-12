@@ -4,13 +4,24 @@
              x:Class="Aviation.Maui.MainPage"
              Title="Aviation Sync">
 
-    <Grid RowDefinitions="Auto,Auto,Auto,*" Padding="16" RowSpacing="12">
-        <Label Grid.Row="0"
+    <Grid RowDefinitions="Auto,Auto,Auto,Auto,*" Padding="16" RowSpacing="12">
+
+        <!-- Offline / degraded banner -->
+        <Border Grid.Row="0"
+                BackgroundColor="#FFF3CD"
+                Padding="8"
+                IsVisible="{Binding ShowOfflineBanner}"
+                StrokeShape="RoundRectangle 4"
+                Stroke="Transparent">
+            <Label Text="{Binding OfflineBanner}" TextColor="#856404" FontSize="12" />
+        </Border>
+
+        <Label Grid.Row="1"
                Text="Aviation Sync (MAUI + SQLite)"
                FontSize="22"
                FontAttributes="Bold" />
 
-        <VerticalStackLayout Grid.Row="1" Spacing="2">
+        <VerticalStackLayout Grid.Row="2" Spacing="2">
             <Label Text="{Binding StatusText, StringFormat='Status: {0}'}" FontSize="12" />
             <Label Text="{Binding LastSyncText, StringFormat='Last sync: {0}'}" FontSize="12" />
             <Label Text="{Binding FacilityCountText}" FontSize="12" />
@@ -20,12 +31,27 @@
                    IsVisible="{Binding HasError}" />
         </VerticalStackLayout>
 
-        <HorizontalStackLayout Grid.Row="2" Spacing="8">
+        <HorizontalStackLayout Grid.Row="3" Spacing="8">
             <Button Text="Refresh" Clicked="OnRefreshClicked" />
             <Button Text="Add facility" Clicked="OnAddClicked" />
         </HorizontalStackLayout>
 
-        <CollectionView Grid.Row="3" ItemsSource="{Binding Facilities}">
+        <!-- Loading indicator -->
+        <Label Grid.Row="4"
+               Text="Loading facilities…"
+               IsVisible="{Binding IsLoading}"
+               HorizontalOptions="Center"
+               VerticalOptions="Center" />
+
+        <!-- Empty state -->
+        <Label Grid.Row="4"
+               Text="No facilities synced yet."
+               IsVisible="{Binding IsEmpty}"
+               HorizontalOptions="Center"
+               VerticalOptions="Center"
+               FontAttributes="Italic" />
+
+        <CollectionView Grid.Row="4" ItemsSource="{Binding Facilities}">
             <CollectionView.ItemTemplate>
                 <DataTemplate>
                     <Grid Padding="8" ColumnDefinitions="80,*,Auto">
